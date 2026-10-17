@@ -1,0 +1,44 @@
+{
+  "name": "soluna-agent",
+  "version": "1.0.0",
+  "description": "Soluna - a minimal, extensible AI coding agent for your terminal and browser",
+  "type": "module",
+  "main": "./src/index.js",
+  "bin": {
+    "soluna": "bin/soluna.js",
+    "soluna-web": "bin/soluna-web.js"
+  },
+  "scripts": {
+    "start": "node bin/soluna.js",
+    "print": "node bin/soluna.js --print",
+    "web": "node bin/soluna.js --web",
+    "test": "node scripts/run-tests.mjs"
+  },
+  "keywords": [
+    "ai",
+    "coding-agent",
+    "llm",
+    "cli",
+    "tui",
+    "agent",
+    "soluna",
+    "mcp",
+    "skills"
+  ],
+  "author": "Soluna contributors",
+  "license": "MIT",
+  "files": [
+    "bin/",
+    "src/",
+    "docs/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "ink": "^5.2.1",
+    "react": "^18.3.1"
+  }
+}

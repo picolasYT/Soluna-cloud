@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gatos Raros - Feline Conservation</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+</head>
+<body>
+  <header class="header">
+    <nav class="navbar">
+      <div class="logo">
+        <span class="logo-icon">🐱</span>
+        <span class="logo-text">Feline Rare</span>
+      </div>
+      <ul class="nav-links">
+        <li><a href="#inicio" class="active">Inicio</a></li>
+        <li><a href="#especies">Especies</a></li>
+        <li><a href="#curiosidades">Curiosidades</a></li>
+        <li><a href="#contacto">Contacto</a></li>
+      </ul>
+      <button class="menu-toggle">Menú</button>
+    </nav>
+  </header>
+
+  <main class="page-content">
+    <section class="hero" id="inicio">
+      <div class="hero-content">
+        <h1 class="hero-title animate-in">Gatos <span class="highlight">Raros</span></h1>
+        <p class="hero-subtitle animate-in" style="animation-delay: 0.2s;">Descubre los gatos más extraordinarios y en peligro de nuestro planeta</p>
+        <a href="#especies" class="btn-primary animate-in" style="animation-delay: 0.4s;">Explorar Especies</a>
+      </div>
+      <div class="hero-image animate-in" style="animation-delay: 0.6s;">
+        <div class="cat-shadow"></div>
+        <svg class="floating-cat" width="400" height="400" viewBox="0 0 400 400">
+          <path class="cat-silhouette" fill="#1a1a2e" d="M200 50 C150 150, 250 200, 350 250 C280 320, 180 330, 200 380 C220 400, 200 400, 200 380 Z"/>
+          <circle class="eye-left" cx="180" cy="200" r="8" fill="#fff"/>
+          <circle class="eye-right" cx="220" cy="200" r="8" fill="#fff"/>
+          <ellipse class="nose" cx="200" cy="240" rx="10" ry="6" fill="#4a4a4a"/>
+          <path class="mouth" d="M200 250 Q200 270, 200 290" stroke="#4a4a4a" stroke-width="2" fill="none"/>
+        </svg>
+      </div>
+    </section>
+
+    <section class="species-grid" id="especies">
+      <div class="section-header">
+        <h2 class="section-title">Gatos Enfocales</h2>
+        <p class="section-subtitle">Conoce las razas más únicas y extraordinarias del mundo felino</p>
+      </div>
+      <div class="species-cards">
+        <!-- Card 1: Persa -->
+        <article class="species-card animate-in" style="animation-delay: 0.1s;" onclick="showCatInfo(1)">
+          <div class="card-image-wrapper">
+            <img src="data:image/jpeg;base64,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" alt="Gato Persa" class="cat-image">
+            <span class="card-badge">Persa</span>
+          </div>
+          <div class="card-content">
+            <h3 class="card-title">Gato Persa</h3>
+            <p class="card-desc">Conocido por su pelaje largo y lujoso y su rostro plano. Originario de Persia (Iran), es una de las razas más antiguas y populares.</p>
+            <div class="card-stats">
+              <span><i class="icon">⚜</i> Longevidad: <span class="stats-longevidad">12-16</span> años</span>
+              <span><i class="icon">🌟</i> Peso: <span class="stats-peso">3-5</span> kg</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- Card 2: Siamés -->
+        <article class="species-card animate-in" style="animation-delay: 0.2s;" onclick="showCatInfo(2)">
+          <div class="card-image-wrapper">
+            <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQMO1rKsrHSBM7lZz0GoJCkVOPwDNWdmx-ZcHLPKwUo_8WJh7OUL16xjhJ7pfo5fu0SXVioBpRpjT45Mz20NqX3-PnfQJ2NjIyTPx4GRsrCkQ&s=10" alt="Gato Siamés" class="cat-image">
+            <span class="card-badge">Siamés</span>
+          </div>
+          <div class="card-content">
+            <h3 class="card-title">Gato Siamés</h3>
+            <p class="card-desc">Famoso por su pelaje corto, puntos oscuros y ojos azul intensos. Originario de Tailandia, es conocido por su voz característica y personalidad juguetona.</p>
+            <div class="card-stats">
+              <span><i class="icon">⚜</i> Longevidad: <span class="stats-longevidad">15-20</span> años</span>
+              <span><i class="icon">🌟</i> Peso: <span class="stats-peso">3-4.5</span> kg</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- Card 3: Maine Coon -->
+        <article class="species-card animate-in" style="animation-delay: 0.3s;" onclick="showCatInfo(3)">
+          <div class="card-image-wrapper">
+            <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRFLQhIi1xZUo6LUrYiGwQnfOKOKqmoZgbQmbEiZK1Dc0MpSfXJ9wG-DmAODQJ6Ks9t6z0-1sNOpG0jGmiAFMNRw_OlkRgiAVdwCpkp8hoR&s=10" alt="Maine Coon" class="cat-image">
+            <span class="card-badge">Maine Coon</span>
+          </div>
+          <div class="card-content">
+            <h3 class="card-title">Maine Coon</h3>
+            <p class="card-desc">El gato doméstico más grande del mundo. Originario de EE. UU., destaca por su pelaje denso, bigotes largos y personalidad amigable.</p>
+            <div class="card-stats">
+              <span><i class="icon">⚜</i> Longevidad: <span class="stats-longevidad">10-13</span> años</span>
+              <span><i class="icon">🌟</i> Peso: <span class="stats-peso">5.9-8</span> kg</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- Card 4: Bengala -->
+        <article class="species-card animate-in" style="animation-delay: 0.4s;" onclick="showCatInfo(4)">
+          <div class="card-image-wrapper">
+            <img src="https://premierpet.com.br/es/wp-content/uploads/sites/4/2025/06/model-banner-bengal-mobile-v1-1024x1024.png" alt="Gato Bengala" class="cat-image">
+            <span class="card-badge">Bengala</span>
+          </div>
+          <div class="card-content">
+            <h3 class="card-title">Gato Bengala</h3>
+            <p class="card-desc">Resultante del cruce entre gatos domésticos y leopardo de nieve asiático. Posee un pelaje salvaje con patrones de rosetas y manchas.</p>
+            <div class="card-stats">
+              <span><i class="icon">⚜</i> Longevidad: <span class="stats-longevidad">12-16</span> años</span>
+              <span><i class="icon">🌟</i> Peso: <span class="stats-peso">3.6-6.8</span> kg</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- Card 5: Ragdoll -->
+        <article class="species-card animate-in" style="animation-delay: 0.5s;" onclick="showCatInfo(5)">
+          <div class="card-image-wrapper">
+            <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTXtYb7t9-Xhx9EjhvoAPH_7FxTvzQaO9Gz_dtxz0VQzMfCOG-GdTSjDzZZa_YFtr3EedDMos2HFyQnz-0mL5sCWlZ2XA9F8HmH_rkbyOH0&s=10" alt="Ragdoll" class="cat-image">
+            <span class="card-badge">Ragdoll</span>
+          </div>
+          <div class="card-content">
+            <h3 class="card-title">Ragdoll</h3>
+            <p class="card-desc">Conocido por volverse flácido como un muñeco de trapo al ser sostenido. Originario de California, tiene ojos azules y pelaje semilargo.</p>
+            <div class="card-stats">
+              <span><i class="icon">⚜</i> Longevidad: <span class="stats-longevidad">12-15</span> años</span>
+              <span><i class="icon">🌟</i> Peso: <span class="stats-peso">3.5-7</span> kg</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- Card 6: Sphynx -->
+        <article class="species-card animate-in" style="animation-delay: 0.6s;" onclick="showCatInfo(6)">
+          <div class="card-image-wrapper">
+            <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTEAw-bAni3RqPxfaFhNmBWkUrBZb-q1Z3z590vaPfTq9XbjE5AmxGoN8rZB1yWAqYrODgtiOtPMWaX60BW17b_Vs71e5INxJm1fmfFdp7TCw&s=10" alt="Sphynx" class="cat-image">
+            <span class="card-badge">Sphynx</span>
+          </div>
+          <div class="card-content">
+            <h3 class="card-title">Sphynx</h3>
+            <p class="card-desc">Gato desnudo natural, conocido por su piel arrugada y calidez al tacto. Requieren cuidados especiales de piel y protección solar.</p>
+            <div class="card-stats">
+              <span><i class="icon">⚜</i> Longevidad: <span class="stats-longevidad">10-15</span> años</span>
+              <span><i class="icon">🌟</i> Peso: <span class="stats-peso">2.5-4</span> kg</span>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="fun-facts" id="curiosidades">
+      <div class="section-header">
+        <h2 class="section-title">Curiosidades Fascinantes</h2>
+        <p class="section-subtitle">Datos increíbles sobre el mundo felino</p>
+      </div>
+      <div class="facts-grid">
+        <div class="fact-card animate-in" style="animation-delay: 0.1s;">
+          <div class="fact-number">01</div>
+          <h3>Oído Superior</h3>
+          <p>Los gatos pueden rotar sus orejas 180 grados y detectan frecuencias ultrasónicas hasta 64 kHz, mejor que cualquier otro mamífero.</p>
+        </div>
+        <div class="fact-card animate-in" style="animation-delay: 0.2s;">
+          <div class="fact-number">02</div>
+          <h3>Patada de Leopardo</h3>
+          <p>Un gato puede saltar hasta 5 veces su altura corporal en un solo salto, gracias a sus poderosas extremidades posteriores.</p>
+        </div>
+        <div class="fact-card animate-in" style="animation-delay: 0.3s;">
+          <div class="fact-number">03</div>
+          <h3>Peler Dorado</h3>
+          <p>El pelaje de los gatos tiene hasta 130,000 pelos por centímetro cuadrado, lo que les proporciona una sensación táctil excepcional.</p>
+        </div>
+        <div class="fact-card animate-in" style="animation-delay: 0.4s;">
+          <div class="fact-number">04</div>
+          <h3>Corazón Felino</h3>
+          <p>Un corazón de gato late entre 140-240 latidos por minuto, casi el doble de rápido que el humano en reposo.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer" id="contacto">
+    <div class="footer-content">
+      <div class="footer-logo">
+        <span class="logo-icon">🐱</span>
+        <span class="footer-text">Gatos Raros</span>
+      </div>
+      <p class="footer-desc">Descubre y celebra la diversidad del mundo felino. Cada especie es única y maravillosa.</p>
+      <div class="footer-links">
+        <a href="#">Inicio</a>
+        <a href="#">Especies</a>
+        <a href="#">Curiosidades</a>
+        <a href="#">Contacto</a>
+      </div>
+      <p class="footer-copy">2024 Feline Rare. Todos los derechos reservados.</p>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+
+  <!-- Modal de información de gato -->
+  <div id="cat-modal" class="modal-overlay">
+    <div class="modal-content">
+      <button class="modal-close" aria-label="Cerrar modal">&times;</button>
+      <img id="modal-image" src="" alt="Información del gato" class="modal-image">
+      <h2 id="modal-title" class="modal-title">Gato</h2>
+      <div id="modal-specs" class="modal-specs"></div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: soluna-cloud
+    runtime: node
+    plan: starter
+    buildCommand: npm ci
+    startCommand: node bin/soluna-web.js
+    healthCheckPath: /healthz
+    disk:
+      name: soluna-data
+      mountPath: /opt/render/project/src/.soluna
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: SOLUNA_WEB_HOST
+        value: 0.0.0.0
+      - key: SOLUNA_HOME
+        value: /opt/render/project/src/.soluna
+      - key: SOLUNA_WEB_TOKEN
+        generateValue: true

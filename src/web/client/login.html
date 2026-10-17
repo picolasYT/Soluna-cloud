@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#090a10" />
+  <title>Ingresar · Soluna Cloud</title>
+  <style>
+    *{box-sizing:border-box}body{display:grid;place-items:center;min-height:100vh;margin:0;padding:22px;background:radial-gradient(ellipse at 50% 42%,rgba(131,105,223,.15),transparent 38%),#090a10;color:#f4f2fc;font:14px system-ui,sans-serif}.card{width:min(100%,390px);padding:34px;border:1px solid rgba(222,220,255,.12);border-radius:20px;background:linear-gradient(145deg,#171822,#101119);box-shadow:0 24px 80px #0008;animation:up .55s both}.mark{display:grid;place-items:center;width:44px;height:44px;margin-bottom:24px;border-radius:14px;background:linear-gradient(145deg,#c4b5ff,#8e76e5);color:#171425;font-size:25px}.brand{font-size:13px;font-weight:700;letter-spacing:.2px}.brand span{margin-left:4px;color:#888598;font-weight:500}.eyebrow{margin-top:30px;color:#a79bbd;font:10px ui-monospace,monospace;letter-spacing:1.5px}.card h1{margin:9px 0 8px;font-size:27px;letter-spacing:-1px}.card p{margin:0 0 23px;color:#928fa0;font-size:12px;line-height:1.6}label{display:block;margin:0 0 8px;color:#b9b5c5;font-size:11px}input{width:100%;height:44px;padding:0 12px;border:1px solid rgba(222,220,255,.16);border-radius:10px;outline:0;background:#0c0d14;color:#f4f2fc;font-size:13px}input:focus{border-color:#a998ed}button{width:100%;height:43px;margin-top:12px;border:0;border-radius:10px;background:linear-gradient(145deg,#c4b5ff,#927be6);color:#191528;font-weight:700;cursor:pointer;transition:transform .18s,filter .18s}button:hover{transform:translateY(-1px);filter:brightness(1.08)}button:disabled{opacity:.65;cursor:wait}#error{min-height:18px;margin-top:11px;color:#ff9da9;font-size:11px}.foot{margin-top:16px;padding-top:16px;border-top:1px solid rgba(222,220,255,.08);color:#6f6c7c;font-size:10px;line-height:1.6}@keyframes up{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="mark" aria-hidden="true">☾</div>
+    <div class="brand">soluna<span>cloud</span></div>
+    <div class="eyebrow">TU WORKSPACE PRIVADO</div>
+    <h1>Qué bueno verte.</h1>
+    <p>Ingresá la contraseña de acceso de tu espacio para abrir Soluna.</p>
+    <form id="login-form">
+      <label for="token">Contraseña de acceso</label>
+      <input id="token" type="password" autocomplete="current-password" autofocus required placeholder="Ingresá tu token privado" />
+      <button id="submit" type="submit">Entrar a Soluna <span aria-hidden="true">→</span></button>
+      <div id="error" role="status" aria-live="polite"></div>
+    </form>
+    <div class="foot">El acceso se guarda como una cookie segura en este navegador. No compartas tu token.</div>
+  </main>
+  <script>
+    const form=document.querySelector('#login-form'),input=document.querySelector('#token'),button=document.querySelector('#submit'),error=document.querySelector('#error');
+    form.addEventListener('submit',async(event)=>{event.preventDefault();error.textContent='';button.disabled=true;button.textContent='Verificando…';try{const response=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:input.value})});if(!response.ok)throw new Error('El token no es válido. Revisá el valor e intentá de nuevo.');location.replace('/');}catch(err){error.textContent=err.message;button.disabled=false;button.innerHTML='Entrar a Soluna <span aria-hidden="true">→</span>';input.focus();}});
+  </script>
+</body>
+</html>

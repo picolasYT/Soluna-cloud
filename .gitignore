@@ -1,0 +1,21 @@
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
+
+# Local config / sessions (runtime data, not source)
+.soluna/
+.zyn/
+*.backup-local-provider/
+backup-*/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Env
+.env
+.env.*
