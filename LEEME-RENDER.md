@@ -26,3 +26,19 @@ token de acceso y las API keys de manera privada.
 - Los cambios de sesión y modelo durante una tarea reciben un aviso para esperar a que termine.
 
 Validación: `npm test` usa servidores locales y respuestas simuladas de OpenRouter; no consume saldo de API. La conexión real con un proveedor requiere una clave válida en tu instancia.
+
+
+## Permisos y visualización de cambios
+
+- Los comandos que requieren autorización muestran el comando completo, el motivo y los botones **Permitir una vez** y **Rechazar**. La decisión se recupera al recargar la página. Detener la tarea también cancela la decisión pendiente.
+- La web solicita permisos por defecto. `--unsafe` permite desactivar explícitamente las confirmaciones y el aislamiento de rutas; `--no-unsafe` mantiene el comportamiento predeterminado.
+- Los cambios de archivos se abren automáticamente y muestran texto agregado (`+`), eliminado (`-`), números de línea y contexto, con colores para ambos temas.
+- Se corrigieron los mensajes finales que llegaban sin fragmentos previos o con un texto distinto al último fragmento recibido.
+
+
+## Recuperación de respuestas de OpenRouter
+
+- Se conservan los errores reales enviados dentro de JSON o SSE, incluso con HTTP 200, y el último evento recibido sin salto de línea.
+- Si una transmisión de OpenRouter termina vacía, se intenta una respuesta sin transmisión con el mismo modelo y mensajes. Esto puede generar una solicitud adicional al proveedor. Las llamadas a herramientas y respuestas con texto no se repiten por esta alternativa.
+- Agotar el presupuesto de generación sin texto visible muestra un error específico, sin reiterar automáticamente la misma solicitud.
+- Los avisos de reintento se actualizan en una sola línea y desaparecen cuando termina el intento.

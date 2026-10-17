@@ -1,4 +1,4 @@
-import { parseSSE, createStreamAccumulator } from "./stream-utils.js";
+import { parseSSE, createStreamAccumulator, assertProviderResponse, assertVisibleResponse, responseText } from "./stream-utils.js";
 
 const keyCursors = new Map();
 
@@ -117,23 +117,58 @@ export class OpenAICompatibleProvider {
     const response = await this.#request(this.#body(messages, model, tools, false), signal);
 
     const data = await response.json();
+    return this.#completion(data);
+  }
+
+  #completion(data) {
+    assertProviderResponse(data, this.label);
     const choice = data.choices?.[0];
     if (!choice) throw new Error(`${this.label} returned no choices`);
-
-    return {
-      content: choice.message?.content || "",
+    if (choice.finish_reason === "error") throw new Error(`${this.label} API error 502: generation failed`);
+    const result = {
+      content: responseText(choice.message?.content),
       tool_calls: choice.message?.tool_calls || [],
       finish_reason: choice.finish_reason,
       usage: data.usage,
     };
+    assertVisibleResponse(result);
+    return result;
   }
 
   async stream({ messages, model, tools, signal, onTextDelta, onToolDelta }) {
+    if (this.preferNonStreaming) {
+      const result = await this.chat({ messages, model, tools, signal });
+      if (result.content) onTextDelta?.(result.content, result.content);
+      return result;
+    }
     const response = await this.#request(this.#body(messages, model, tools, true), signal);
+
+    // Some compatible gateways answer a streaming request with ordinary JSON.
+    if (response.headers.get("content-type")?.includes("application/json")) {
+      const result = this.#completion(await response.json());
+      if (result.content) onTextDelta?.(result.content, result.content);
+      return result;
+    }
 
     const acc = createStreamAccumulator({ onTextDelta, onToolDelta });
     for await (const chunk of parseSSE(response, signal)) acc.push(chunk);
-    return acc.result();
+    const result = acc.result();
+    if (this.id !== "openrouter" || result.content.trim() || result.tool_calls.length) return result;
+    if (signal?.aborted) throw new Error("aborted");
+
+    // One compatibility fallback for an empty stream; explicit API failures,
+    // partial text and tool calls never trigger an extra generation here.
+    const fallback = await this.chat({ messages, model, tools, signal });
+    if (fallback.content.trim() || fallback.tool_calls.length) this.preferNonStreaming = true;
+    if (fallback.content) onTextDelta?.(fallback.content, fallback.content);
+    if (result.usage) {
+      const usage = { ...fallback.usage };
+      for (const key of ["prompt_tokens", "completion_tokens", "total_tokens"]) {
+        if (result.usage[key] != null || usage[key] != null) usage[key] = (result.usage[key] || 0) + (usage[key] || 0);
+      }
+      fallback.usage = usage;
+    }
+    return fallback;
   }
 
   /** Discover models from GET /models when the provider supports it. */

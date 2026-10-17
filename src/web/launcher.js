@@ -20,7 +20,7 @@ function parseArgs(args) {
     host: process.env.SOLUNA_WEB_HOST || "localhost",
     port: Number(process.env.SOLUNA_WEB_PORT || process.env.PORT || process.env.ZYN_WEB_PORT) || 3456,
     cwd: process.cwd(),
-    unsafe: true,
+    unsafe: false,
     noMcp: false,
     token: process.env.SOLUNA_WEB_TOKEN || null,
     provider: null,
@@ -47,6 +47,9 @@ function parseArgs(args) {
         break;
       case "--token":
         options.token = args[++i];
+        break;
+      case "--unsafe":
+        options.unsafe = true;
         break;
       case "--no-unsafe":
         options.unsafe = false;
@@ -76,7 +79,8 @@ Options:
   -d, --cwd <path>  Working directory (default cwd)
   --add-dir <path>  Allow an extra directory
   --token <secret>  Require this token (URL query or Bearer header)
-  --no-unsafe       Keep sandbox + command approval ON
+  --unsafe          Auto-approve commands and disable sandbox (explicit opt-in)
+  --no-unsafe       Keep sandbox + command approval ON (default)
   --no-mcp          Skip loading MCP servers
   --provider <id>   Provider to use
   --model <id>      Model to use

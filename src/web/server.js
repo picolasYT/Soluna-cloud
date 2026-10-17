@@ -65,8 +65,8 @@ const MIME = {
  *
  * Reuses the exact same core as the TUI — workspace sandbox, tools, provider
  * adapters, session store, retries and compaction — but drives it through a
- * small HTTP/SSE layer instead of Ink. `confirm` is auto-approved so the
- * experience matches `--unsafe` (the server binds to localhost by default).
+ * small HTTP/SSE layer instead of Ink. Risky commands await browser approval
+ * unless the operator explicitly enables --unsafe.
  */
 export async function startWebServer(options = {}) {
   const {
@@ -74,7 +74,7 @@ export async function startWebServer(options = {}) {
     host = "localhost",
     port = Number(process.env.SOLUNA_WEB_PORT || process.env.ZYN_WEB_PORT) || 3456,
     addDir = [],
-    unsafe = true, // web = local server → match `--unsafe` by default
+    unsafe = false,
     noMcp = false,
     initialProvider = null,
     initialModel = null,
@@ -111,6 +111,7 @@ export async function startWebServer(options = {}) {
   // Pending `ask` request awaiting the browser's answer.
   let askRequest = null;
   let askResolver = null;
+  let askCleanup = null;
 
   /* ------------------------------ publishing ------------------------- */
 
@@ -136,7 +137,23 @@ export async function startWebServer(options = {}) {
 
   /* ------------------------------ tools --------------------------------- */
 
-  const confirm = async () => true; // auto-approve: equivalent to --unsafe
+  const confirm = async ({ command, reason }) => {
+    if (unsafe) return true;
+    const answers = await uiBridge.ask({
+      signal: activeController?.signal,
+      questions: [{
+        header: "Permitir acción",
+        question: `Soluna necesita tu permiso para ejecutar este comando:\n\n${command}\n\nMotivo: ${reason}`,
+        custom: false,
+        multiple: false,
+        options: [
+          { label: "Permitir una vez", description: "Ejecutar únicamente este comando" },
+          { label: "Rechazar", description: "Continuar sin ejecutarlo" },
+        ],
+      }],
+    });
+    return answers?.[0]?.answers?.includes("Permitir una vez") === true;
+  };
 
   const tools = [
     createReadTool(workspace),
@@ -167,10 +184,14 @@ export async function startWebServer(options = {}) {
 
   // `ask` requests from tools surface as a web request; the browser answers.
   uiBridge.connect(
-    (request) =>
+    ({ signal, ...request }) =>
       new Promise((resolve) => {
+        if (signal?.aborted) return resolve([]);
         askRequest = request;
         askResolver = resolve;
+        const onAbort = () => finishAsk([]);
+        signal?.addEventListener("abort", onAbort, { once: true });
+        askCleanup = () => signal?.removeEventListener("abort", onAbort);
         append("ask", { request });
       }),
   );
@@ -179,6 +200,8 @@ export async function startWebServer(options = {}) {
   function finishAsk(answers) {
     const resolver = askResolver;
     const request = askRequest;
+    askCleanup?.();
+    askCleanup = null;
     askResolver = null;
     askRequest = null;
     append("ask-done", { id: request?.id, answers: answers ?? [] });
@@ -200,6 +223,7 @@ export async function startWebServer(options = {}) {
       queued: jobs.queuedCount,
       busy: Boolean(jobs.running),
       currentRunId: jobs.running?.id || null,
+      askRequest,
     };
   }
 
@@ -334,10 +358,11 @@ export async function startWebServer(options = {}) {
           pushError(`Compaction failed: ${e.error}`);
         }
       },
+      onRetryResolved: () => append("retry-end"),
       onRetry: ({ attempt, attempts, delay, error }) => {
-        pushSystem(
-          `Provider failed: ${String(error.message).slice(0, 90)} — retry ${attempt}/${attempts - 1} in ${Math.round(delay / 100) / 10}s`,
-        );
+        append("retry", {
+          message: `El proveedor no pudo completar la respuesta: ${String(error.message).slice(0, 180)}. Reintentando ${attempt}/${attempts - 1} en ${Math.round(delay / 100) / 10}s…`,
+        });
       },
       });
 
@@ -347,6 +372,7 @@ export async function startWebServer(options = {}) {
       session.usage = { ...usage };
       session.scheduleSave();
     } finally {
+      append("retry-end");
       if (activeController === controller) activeController = null;
       broadcastState();
     }
@@ -725,6 +751,7 @@ export async function startWebServer(options = {}) {
 
       // Send the journal so a (re)connecting tab catches up.
       for (const evt of journal) {
+        if (evt.kind === "ask" || evt.kind === "ask-done") continue;
         client.write(`data: ${JSON.stringify(evt)}\n\n`);
       }
       // Always send a fresh snapshot of the current state.
@@ -848,7 +875,16 @@ export async function startWebServer(options = {}) {
     if (req.method === "POST" && path === "/api/ask") {
       if (!authOk(req)) return sendError(res, 401, "Unauthorized");
       const body = await readJSONBody(req);
-      finishAsk(Array.isArray(body.answers) ? body.answers : []);
+      if (!askRequest || body.id !== askRequest.id) return sendError(res, 409, "Esta decisión ya no está pendiente.");
+      if (!Array.isArray(body.answers) || body.answers.some((answer, index) => {
+        const question = askRequest.questions[index];
+        return !question || !Array.isArray(answer?.answers) || answer.answers.some((value) =>
+          typeof value !== "string" || (question.custom === false && !question.options.some((option) => option.label === value))
+        ) || (!question.multiple && answer.answers.length > 1);
+      }) || (body.answers.length !== 0 && body.answers.length !== askRequest.questions.length)) {
+        return sendError(res, 400, "La respuesta no es válida.");
+      }
+      finishAsk(body.answers);
       return sendJSON(res, 200, { ok: true });
     }
 
@@ -856,7 +892,7 @@ export async function startWebServer(options = {}) {
       if (!authOk(req)) return sendError(res, 401, "Unauthorized");
       const body = await readJSONBody(req);
       const running = jobs.running?.id === body.id;
-      if (running) activeController?.abort();
+      if (running) { activeController?.abort(); if (askRequest) finishAsk([]); }
       const ok = running || jobs.cancel(body.id);
       return sendJSON(res, 200, { ok });
     }
@@ -1035,6 +1071,7 @@ export async function startWebServer(options = {}) {
     jobs,
     async close() {
       activeController?.abort();
+      if (askRequest) finishAsk([]);
       for (const client of clients) client.res.end();
       await jobs.waitIdle();
       await session.flush();

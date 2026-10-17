@@ -7,15 +7,23 @@ export async function* parseSSE(response, signal) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let dataLines = [];
+  const decodeEvent = () => {
+    const payload = dataLines.join("\n").trim();
+    dataLines = [];
+    if (!payload) return null;
+    if (payload === "[DONE]") return "done";
+    try { return JSON.parse(payload); }
+    catch { throw new Error("Provider stream dropped an invalid or incomplete JSON event."); }
+  };
 
   try {
     while (true) {
       if (signal?.aborted) throw new Error("aborted");
 
       const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
+      buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
+      if (done && buffer && !buffer.endsWith("\n")) buffer += "\n";
 
       // SSE events are newline-separated and may arrive split.
       let newlineAt;
@@ -23,19 +31,22 @@ export async function* parseSSE(response, signal) {
         const line = buffer.slice(0, newlineAt).trim();
         buffer = buffer.slice(newlineAt + 1);
 
-        if (!line || !line.startsWith("data:")) continue;
-        const payload = line.slice(5).trim();
-        if (payload === "[DONE]") return;
-
-        try {
-          yield JSON.parse(payload);
-        } catch {
-          // Incomplete frame or keep-alive: ignore.
+        if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
+        else if (!line) {
+          const event = decodeEvent();
+          if (event === "done") return;
+          if (event) yield event;
         }
+      }
+      if (done) {
+        const event = decodeEvent();
+        if (event && event !== "done") yield event;
+        break;
       }
     }
   } finally {
     try {
+      await reader.cancel();
       reader.releaseLock();
     } catch {
       // The reader may already be closed.
@@ -57,18 +68,21 @@ export function createStreamAccumulator({ onTextDelta, onToolDelta }) {
 
   return {
     push(chunk) {
+      assertProviderResponse(chunk);
       if (chunk.usage) usage = chunk.usage;
 
       const choice = chunk.choices?.[0];
       if (!choice) return;
+      if (choice.finish_reason === "error") throw new Error("Provider API error 502: generation failed during streaming.");
       if (choice.finish_reason) finishReason = choice.finish_reason;
 
-      const delta = choice.delta;
+      const delta = choice.delta || choice.message;
       if (!delta) return;
 
-      if (delta.content) {
-        content += delta.content;
-        onTextDelta?.(delta.content, content);
+      const text = responseText(delta.content);
+      if (text) {
+        content += text;
+        onTextDelta?.(text, content);
       }
 
       for (const tc of delta.tool_calls || []) {
@@ -106,12 +120,37 @@ export function createStreamAccumulator({ onTextDelta, onToolDelta }) {
         if (tc.id) byId.set(tc.id, tc);
         else byId.set(`idx_${toolCalls.indexOf(tc)}`, tc);
       }
-      return {
+      const result = {
         content,
         tool_calls: [...byId.values()],
         finish_reason: finishReason,
         usage,
       };
+      assertVisibleResponse(result);
+      return result;
     },
   };
+}
+
+export function responseText(content) {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) return content.filter((part) => part.type === "text").map((part) => part.text || "").join("");
+  return "";
+}
+
+/** HTTP 200 can still carry a provider error inside JSON or SSE. */
+export function assertProviderResponse(data, label = "Provider") {
+  if (!data?.error) return;
+  const error = data.error;
+  throw new Error(`${label} API error ${error.code || error.metadata?.error_type || "unknown"}: ${typeof error === "string" ? error : error.message || "generation failed"}`);
+}
+
+export function assertVisibleResponse(result) {
+  if (result.content.trim() || result.tool_calls.length) return;
+  if (result.finish_reason === "length") {
+    throw new Error("El modelo agotó el límite de generación sin producir texto visible. Aumentá el presupuesto de salida o elegí otro modelo.");
+  }
+  if (result.finish_reason === "content_filter") {
+    throw new Error("El proveedor bloqueó la respuesta por su filtro de contenido. Revisá el mensaje o elegí otro modelo.");
+  }
 }

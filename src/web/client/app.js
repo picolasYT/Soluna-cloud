@@ -1,4 +1,5 @@
 import { renderMarkdown } from "./markdown.js";
+import { renderDiff } from "./diff.js";
 
 /* ============================================================
    Soluna Web Client
@@ -48,6 +49,7 @@ const state = {
 
 let es = null;
 let streamEl = null;
+let retryEl = null;
 
 /* ---------------- Bootstrap ---------------- */
 
@@ -83,12 +85,16 @@ function handleEvent(ev) {
     case "tool-live": upsertToolLive(ev); break;
     case "tool": addToolResult(ev.entry); break;
     case "system": addSystemLine(ev.text); break;
+    case "retry": setRetry(ev.message); break;
+    case "retry-end": setRetry(""); break;
     case "error": addErrorLine(ev.text); break;
     case "state": applyState(ev); break;
     case "compacting": setCompacting(ev.message); break;
     case "compacting-end": setCompacting(""); break;
     case "ask": showAsk(ev.request); break;
-    case "ask-done": break;
+    case "ask-done":
+      if (pendingAsk?.id === ev.id) { pendingAsk = null; $("#ask-overlay").classList.remove("show"); }
+      break;
     case "clear": clearTranscript(); break;
     case "session-restored": restoreTranscript(ev.messages || []); break;
     case "run-queued": state.currentRunId = ev.id; break;
@@ -183,41 +189,92 @@ function updateThemeIcon() {
 
 /* ---------------- Ask modal ---------------- */
 
+let pendingAsk = null;
+let askAnswers = [];
+let askIndex = 0;
+let askSubmitting = false;
+
 function bindAsk() {
-  $("#ask-cancel").addEventListener("click", () => {
-    $("#ask-overlay").classList.remove("show");
-    apiFetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers: [] }) });
-  });
+  $("#ask-cancel").addEventListener("click", () => submitAsk([]));
+}
+
+async function submitAsk(answers) {
+  if (!pendingAsk || askSubmitting) return;
+  const id = pendingAsk.id;
+  askSubmitting = true;
+  $$("#ask-modal button").forEach((button) => { button.disabled = true; });
+  try {
+    await apiFetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, answers }) });
+    if (pendingAsk?.id === id) {
+      pendingAsk = null;
+      $("#ask-overlay").classList.remove("show");
+    }
+  } catch (error) {
+    addErrorLine(error.message);
+    // Keep the decision visible so a failed request can be retried.
+    if (pendingAsk?.id === id) renderAskQuestion();
+  } finally {
+    askSubmitting = false;
+    $$("#ask-modal button").forEach((button) => { button.disabled = false; });
+  }
 }
 
 function showAsk(request) {
-  const overlay = $("#ask-overlay");
-  const title = $("#ask-title");
+  if (!request?.questions?.length || pendingAsk?.id === request.id) return;
+  pendingAsk = request;
+  askAnswers = [];
+  askIndex = 0;
+  renderAskQuestion();
+}
+
+function renderAskQuestion() {
+  const q = pendingAsk.questions[askIndex];
+  $("#ask-title").textContent = q.header || "Soluna necesita una decisión";
   const body = $("#ask-body");
-
-  title.textContent = request.questions?.[0]?.header || "Permission";
   body.innerHTML = "";
-
-  const q = request.questions?.[0];
-  if (!q) return;
-
-  const custom = document.createElement("div");
-  custom.style.marginTop = "4px";
-  const options = q.options || [];
-
-  options.forEach((opt) => {
-    const btn = document.createElement("button");
-    btn.className = "ask-option";
-    btn.innerHTML = `<span><span class="opt-label">${escapeHtml(opt.label)}</span>${opt.description ? `<br><span class="opt-desc">${escapeHtml(opt.description)}</span>` : ""}</span>`;
+  const question = el("div", "ask-question");
+  question.textContent = q.question;
+  body.appendChild(question);
+  const selected = new Set();
+  const choose = (values) => {
+    const answer = { header: q.header, question: q.question, answers: values };
+    const answers = [...askAnswers.slice(0, askIndex), answer];
+    if (askIndex + 1 < pendingAsk.questions.length) {
+      askAnswers = answers;
+      askIndex++;
+      renderAskQuestion();
+    } else submitAsk(answers);
+  };
+  (q.options || []).forEach((opt) => {
+    const btn = el("button", "ask-option");
+    btn.innerHTML = `<span class="opt-label">${escapeHtml(opt.label)}</span>${opt.description ? `<br><span class="opt-desc">${escapeHtml(opt.description)}</span>` : ""}`;
+    if (q.multiple) btn.setAttribute("aria-pressed", "false");
     btn.addEventListener("click", () => {
-      overlay.classList.remove("show");
-      apiFetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers: [opt.label] }) });
+      if (!q.multiple) return choose([opt.label]);
+      if (selected.has(opt.label)) selected.delete(opt.label); else selected.add(opt.label);
+      btn.setAttribute("aria-pressed", String(selected.has(opt.label)));
     });
-    body.appendChild(custom);
-    custom.appendChild(btn);
+    body.appendChild(btn);
   });
-
-  overlay.classList.add("show");
+  let custom;
+  if (q.custom !== false) {
+    custom = el("textarea", "ask-custom");
+    custom.placeholder = "Escribí tu respuesta…";
+    custom.setAttribute("aria-label", "Respuesta personalizada");
+    body.appendChild(custom);
+  }
+  if (q.multiple || custom) {
+    const next = el("button", "btn btn-primary");
+    next.textContent = askIndex + 1 < pendingAsk.questions.length ? "Siguiente" : "Enviar respuesta";
+    next.addEventListener("click", () => {
+      const values = [...selected];
+      if (custom?.value.trim()) values.push(custom.value.trim());
+      if (values.length) choose(values);
+    });
+    body.appendChild(next);
+  }
+  $("#ask-overlay").classList.add("show");
+  body.querySelector("button, textarea")?.focus();
 }
 
 /* ---------------- Suggestions ---------------- */
@@ -238,6 +295,8 @@ function hideEmpty() { $("#empty-state")?.style.setProperty("display", "none"); 
 function showEmpty() { $("#empty-state")?.style.setProperty("display", "flex"); }
 
 function clearTranscript() {
+  retryEl = null;
+  streamEl = null;
   $("#transcript").replaceChildren(emptyStateEl);
   showEmpty();
   state.streamText = "";
@@ -296,20 +355,34 @@ function appendStream(content) {
 }
 
 function finalizeStream(text) {
-  if (typeof text === "string" && text) state.streamText = text;
+  // A final response may differ from the last chunk, or arrive without chunks.
+  if (typeof text === "string") state.streamText = text;
+  if (state.streamText) {
+    if (!streamEl) appendStreamEl();
+    streamEl.querySelector(".stream-text").innerHTML = renderMarkdown(state.streamText);
+  }
   state.streaming = false;
-  setBusy(false);
-
-  // Move the finished bubble from the live region into the transcript.
   if (streamEl) {
     streamEl.classList.remove("msg-streaming");
     streamEl.querySelector(".cursor")?.remove();
-    $("#transcript").appendChild(streamEl);
+    if (state.streamText) $("#transcript").appendChild(streamEl);
+    else streamEl.remove();
     streamEl = null;
   }
+  state.streamText = "";
   $("#stream-output").classList.remove("show");
   $("#stream-output").innerHTML = "";
   scrollBottom();
+}
+
+function setRetry(text) {
+  if (!text) { retryEl?.remove(); retryEl = null; return; }
+  if (!retryEl) {
+    retryEl = el("div", "line-system");
+    retryEl.setAttribute("role", "status");
+    appendTranscript(retryEl);
+  }
+  retryEl.textContent = text;
 }
 
 function addSystemLine(text) {
@@ -334,8 +407,11 @@ function setCompacting(msg) {
 
 function upsertToolLive(ev) {
   hideEmpty();
-  let card = document.querySelector(`.tool-card[data-id="${ev.id}"]`);
-  if (!card) return; // created on "tool" event with full data
+  let card = Array.from(document.querySelectorAll(".tool-card")).find((node) => node.dataset.id === ev.id);
+  if (!card) {
+    addToolResult({ id: ev.id, name: ev.name, phase: ev.phase, label: ev.args?.path || ev.args?.command || ev.name });
+    card = Array.from(document.querySelectorAll(".tool-card")).find((node) => node.dataset.id === ev.id);
+  }
   const status = card.querySelector(".tool-status");
   if (ev.phase === "running") {
     status.innerHTML = '<span class="spinner"></span> running';
@@ -346,11 +422,11 @@ function upsertToolLive(ev) {
 
 function addToolResult(entry) {
   hideEmpty();
-  let card = document.querySelector(`.tool-card[data-id="${entry.id}"]`);
+  let card = Array.from(document.querySelectorAll(".tool-card")).find((node) => node.dataset.id === entry.id);
   if (!card) {
-    card = el("div", "tool-entry");
-    card.innerHTML = `<div class="tool-card" data-id="${entry.id}"></div>`;
-    appendTranscript(card.firstChild);
+    card = el("div", "tool-card");
+    card.dataset.id = entry.id;
+    appendTranscript(card);
   }
   const inner = card.classList.contains("tool-card") ? card : card.querySelector(".tool-card");
 
@@ -375,6 +451,7 @@ function addToolResult(entry) {
     </div>
     ${bodyHtml ? `<div class="tool-card-body">${bodyHtml}</div>` : ""}`;
 
+  if (entry.diff || isError) inner.classList.add("open");
   if (bodyHtml) {
     inner.querySelector(".tool-card-head").addEventListener("click", () => {
       inner.classList.toggle("open");
@@ -383,15 +460,6 @@ function addToolResult(entry) {
   scrollBottom();
 }
 
-function renderDiff(diff) {
-  if (!diff) return "";
-  const lines = [];
-  for (const l of diff.lines || []) {
-    if (l.type === "add") lines.push(`<div class="diff-add">+ ${escapeHtml(l.text)}</div>`);
-    else if (l.type === "rem") lines.push(`<div class="diff-rem">- ${escapeHtml(l.text)}</div>`);
-  }
-  return `<div class="tool-diff">${lines.join("")}</div>`;
-}
 
 function appendTranscript(node) {
   $("#transcript").appendChild(node);
@@ -406,6 +474,8 @@ function scrollBottom() {
 /* ---------------- State ---------------- */
 
 function applyState(s) {
+  if (s.askRequest) showAsk(s.askRequest);
+  else if (s.askRequest === null) { pendingAsk = null; $("#ask-overlay").classList.remove("show"); }
   window.dispatchEvent(new CustomEvent("soluna-state", { detail: s }));
   if (s.usage) state.usage = s.usage;
   if (s.contextUsed != null) state.contextUsed = s.contextUsed;
@@ -413,6 +483,7 @@ function applyState(s) {
   if (s.provider) state.provider = s.provider;
   if (s.model) state.model = s.model;
   if (s.currentRunId !== undefined) state.currentRunId = s.currentRunId;
+  if (s.busy === false && streamEl) finalizeStream(state.streamText);
   if (s.busy != null) setBusy(s.busy);
 
   if ($("#provider-name")) $("#provider-name").textContent = s.provider || "—";
