@@ -26,6 +26,7 @@ import {
   loadConfig,
   saveConfig,
   saveApiKey,
+  resolveApiKey,
   loadMCPServers,
   saveMCPServer,
   removeMCPServer,
@@ -44,6 +45,7 @@ import { renderSkillsPrompt } from "../core/skills.js";
 import { uiBridge } from "../core/ui-bridge.js";
 import { indexHtml, loginHtml, newRunId, clientBase } from "./events.js";
 import { Jobs } from "./jobs.js";
+import { fetchOpenRouterModels } from "./openrouter-models.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -78,6 +80,7 @@ export async function startWebServer(options = {}) {
     initialModel = null,
     initialPrompt = null,
     token = null,
+    modelFetch = fetch,
   } = options;
 
   // Real context limits (local cache, network optional).
@@ -92,6 +95,8 @@ export async function startWebServer(options = {}) {
 
   let session = new Session({ cwd, provider: providerId, model });
   const workspacesDir = join(SOLUNA_HOME, "workspaces");
+  let openRouterModelCache = null;
+  let openRouterModelPending = null;
   const jobs = new Jobs();
   const clients = new Set();
   const usage = { input: 0, output: 0, turns: 0, toolCalls: 0 };
@@ -615,6 +620,7 @@ export async function startWebServer(options = {}) {
       throw Object.assign(new Error("Ingresá una clave API antes de guardarla."), { status: 400 });
     }
     await saveApiKey(provider, key || null);
+    if (provider === "openrouter") openRouterModelCache = null;
     const cfg = await loadConfig();
     Object.assign(config, cfg);
     pushSystem(
@@ -731,6 +737,36 @@ export async function startWebServer(options = {}) {
     if (req.method === "GET" && path === "/api/config") {
       if (!authOk(req)) return sendError(res, 401, "Unauthorized");
       return sendJSON(res, 200, await getCatalogInfo());
+    }
+
+    if (req.method === "GET" && path === "/api/models") {
+      if (!authOk(req)) return sendError(res, 401, "Unauthorized");
+      const provider = query.get("provider");
+      const info = getProviderInfo(provider, catalog);
+      if (!info) return sendError(res, 400, "Proveedor desconocido.");
+      if (provider !== "openrouter") return sendJSON(res, 200, { models: info.models || [], source: "built-in" });
+
+      const cfg = await loadConfig();
+      const apiKey = resolveApiKey("openrouter", info.envKey, cfg);
+      if (!apiKey) return sendError(res, 400, "Guardá tu clave de OpenRouter para cargar todos los modelos.");
+      if (openRouterModelCache?.expires > Date.now() && openRouterModelCache.key === apiKey) {
+        return sendJSON(res, 200, { models: openRouterModelCache.models, source: "openrouter" });
+      }
+      try {
+        if (openRouterModelPending?.key !== apiKey) {
+          const pending = fetchOpenRouterModels(apiKey, modelFetch).then((models) => {
+            openRouterModelCache = { key: apiKey, models, expires: Date.now() + 10 * 60 * 1000 };
+            return models;
+          }).finally(() => {
+            if (openRouterModelPending?.promise === pending) openRouterModelPending = null;
+          });
+          openRouterModelPending = { key: apiKey, promise: pending };
+        }
+        const models = await openRouterModelPending.promise;
+        return sendJSON(res, 200, { models, source: "openrouter" });
+      } catch (error) {
+        return sendError(res, 502, error.message || "No se pudo consultar OpenRouter.");
+      }
     }
 
     if (req.method === "GET" && path === "/api/workspaces") {

@@ -44,6 +44,10 @@ disco, la configuración y las sesiones pueden desaparecer en un reinicio.
 ## Uso y acceso
 
 Ingresá con el token, elegí un proveedor y configurá su API key si la necesita.
+Al seleccionar OpenRouter se consulta su catálogo completo; buscá un modelo por
+nombre o ID desde Ajustes. Algunos modelos de otras modalidades no admiten
+tareas de chat o herramientas. Si la consulta falla, la web muestra el error y
+mantiene los modelos incluidos como opción temporal.
 Podés importar repositorios públicos desde la interfaz y cambiar entre
 proyectos. La primera versión no incluye importación de repositorios privados.
 

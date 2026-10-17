@@ -19,7 +19,17 @@ async function freePort() {
 
 test("cloud web entry requires login and accepts a private token cookie", async (t) => {
   const cwd = await mkdtemp(join(tempRoot, "workspace-"));
-  const instance = await startWebServer({ cwd, host: "127.0.0.1", port: await freePort(), noMcp: true, token: "local-test-token" });
+  let modelRequests = 0;
+  const modelFetch = async (url, options) => {
+    modelRequests++;
+    assert.match(url, /openrouter\.ai\/api\/v1\/models\?output_modalities=all/);
+    assert.equal(options.headers.Authorization, "Bearer local-test-key");
+    return new Response(JSON.stringify({ data: [
+      { id: "openai/gpt-4o", name: "GPT-4o" },
+      ...Array.from({ length: 8 }, (_, index) => ({ id: `vendor/model-${index}`, name: `Model ${index}` })),
+    ] }), { status: 200 });
+  };
+  const instance = await startWebServer({ cwd, host: "127.0.0.1", port: await freePort(), noMcp: true, token: "local-test-token", modelFetch });
   t.after(async () => {
     await instance.close();
     await rm(tempRoot, { recursive: true, force: true });
@@ -66,6 +76,15 @@ test("cloud web entry requires login and accepts a private token cookie", async 
   assert.equal(provider.keySource, "saved in config");
   assert.ok(provider.models.some((item) => item.id === "openai/gpt-4o"));
 
+  const allModels = await fetch(`${base}/api/models?provider=openrouter`, { headers: { Cookie: cookie.split(";")[0] } });
+  assert.equal(allModels.status, 200);
+  const fullCatalog = await allModels.json();
+  assert.equal(fullCatalog.models.length, 9);
+  assert.ok(fullCatalog.models.some((item) => item.id === "vendor/model-7"));
+  const cachedModels = await fetch(`${base}/api/models?provider=openrouter`, { headers: { Cookie: cookie.split(";")[0] } });
+  assert.equal(cachedModels.status, 200);
+  assert.equal(modelRequests, 1);
+
   const selectProvider = await fetch(`${base}/api/set-provider`, {
     method: "POST",
     headers: { Cookie: cookie.split(";")[0], "Content-Type": "application/json" },
@@ -78,11 +97,11 @@ test("cloud web entry requires login and accepts a private token cookie", async 
   const selectModel = await fetch(`${base}/api/set-model`, {
     method: "POST",
     headers: { Cookie: cookie.split(";")[0], "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "openai/gpt-4o" }),
+    body: JSON.stringify({ model: "vendor/model-7" }),
   });
   assert.equal(selectModel.status, 200);
   const afterModel = await fetch(`${base}/api/state`, { headers: { Cookie: cookie.split(";")[0] } });
-  assert.equal((await afterModel.json()).model, "openai/gpt-4o");
+  assert.equal((await afterModel.json()).model, "vendor/model-7");
 
   const badKey = await fetch(`${base}/api/save-key`, {
     method: "POST",

@@ -5,6 +5,8 @@ const modelSelect = $("#model-select");
 const settingsProvider = $("#settings-provider");
 let catalog = [];
 let configLoaded = false;
+const providerModels = new Map();
+let modelsRequestId = 0;
 
 async function request(path, options) {
   const response = await api(path, options);
@@ -27,12 +29,51 @@ function option(label, value, disabled = false) {
 }
 
 function fillModels(select, provider, current) {
-  const info = catalog.find((item) => item.id === provider);
+  const models = availableModels(provider);
   select.replaceChildren(option(provider ? "Elegir modelo" : "Elegí proveedor", ""));
-  for (const model of info?.models || []) {
+  for (const model of models) {
     select.appendChild(option(model.label || model.id, model.id));
   }
-  if (current && [...select.options].some((item) => item.value === current)) select.value = current;
+  if (current) {
+    if (!models.some((item) => item.id === current)) select.appendChild(option(current, current));
+    select.value = current;
+  }
+}
+
+function availableModels(provider) {
+  return providerModels.get(provider) || catalog.find((item) => item.id === provider)?.models || [];
+}
+
+function renderModelSearch(provider) {
+  const models = availableModels(provider);
+  const term = $("#model-search").value.trim().toLocaleLowerCase();
+  const matches = term
+    ? models.filter((item) => `${item.label} ${item.id}`.toLocaleLowerCase().includes(term))
+    : models;
+  const list = $("#settings-model");
+  list.replaceChildren(...matches.map((item) => option(`${item.label} · ${item.id}`, item.id)));
+  if (matches.some((item) => item.id === modelSelect.value)) list.value = modelSelect.value;
+  $("#model-count").textContent = term ? `${matches.length} de ${models.length}` : `${models.length} modelos`;
+}
+
+async function loadProviderModels(provider, current) {
+  const requestId = ++modelsRequestId;
+  if (provider !== "openrouter") {
+    renderModelSearch(provider);
+    return;
+  }
+  $("#model-count").textContent = "Cargando catálogo…";
+  try {
+    const result = await request(`/api/models?provider=${encodeURIComponent(provider)}`);
+    if (requestId !== modelsRequestId || providerSelect.value !== provider) return;
+    providerModels.set(provider, result.models);
+    fillModels(modelSelect, provider, current || modelSelect.value);
+    renderModelSearch(provider);
+  } catch (error) {
+    if (requestId !== modelsRequestId || providerSelect.value !== provider) return;
+    $("#model-count").textContent = "Lista parcial";
+    showNotice(`No se pudo cargar el catálogo completo de OpenRouter: ${error.message}`);
+  }
 }
 
 function fillProviders(select, selected, disableUnready = false) {
@@ -51,6 +92,8 @@ async function loadConfig() {
     fillProviders(providerSelect, data.current?.provider, true);
     fillProviders(settingsProvider, data.current?.provider);
     fillModels(modelSelect, data.current?.provider, data.current?.model);
+    renderModelSearch(data.current?.provider);
+    if (data.current?.provider === "openrouter") loadProviderModels("openrouter", data.current?.model);
     configLoaded = true;
   } catch (error) {
     showNotice(`No se pudo cargar la lista de modelos: ${error.message}`);
@@ -141,6 +184,7 @@ async function selectProvider(provider) {
     fillModels(modelSelect, provider, item?.models?.[0]?.id);
     settingsProvider.value = provider;
     $("#model-hint").textContent = item?.models?.[0]?.id || provider;
+    await loadProviderModels(provider, modelSelect.value);
   } catch (error) { showNotice(error.message); }
 }
 
@@ -149,6 +193,8 @@ async function selectModel(model) {
   try {
     await request("/api/set-model", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model }) });
     $("#model-hint").textContent = model;
+    modelSelect.value = model;
+    $("#settings-model").value = model;
   } catch (error) { showNotice(error.message); }
 }
 
@@ -164,6 +210,7 @@ function showNotice(message) {
 function openSettings() {
   $("#settings-overlay").classList.add("show");
   if (!configLoaded) loadConfig();
+  else renderModelSearch(settingsProvider.value);
 }
 
 providerSelect.addEventListener("change", () => selectProvider(providerSelect.value));
@@ -174,9 +221,12 @@ settingsProvider.addEventListener("change", () => {
     selectProvider(settingsProvider.value);
   } else {
     $("#settings-note").textContent = `Guardá una clave API para activar ${item.label}.`;
+    renderModelSearch(settingsProvider.value);
   }
 });
 modelSelect.addEventListener("change", () => selectModel(modelSelect.value));
+$("#model-search").addEventListener("input", () => renderModelSearch(settingsProvider.value));
+$("#settings-model").addEventListener("change", () => selectModel($("#settings-model").value));
 $("#settings-open").addEventListener("click", openSettings);
 $("#settings-close").addEventListener("click", () => $("#settings-overlay").classList.remove("show"));
 $("#settings-overlay").addEventListener("click", (event) => {
@@ -190,6 +240,7 @@ $("#settings-save-key").addEventListener("click", async () => {
     await request("/api/save-key", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider, key }) });
     $("#settings-key").value = "";
     $("#settings-note").textContent = "Clave guardada en este espacio.";
+    providerModels.delete(provider);
     await loadConfig();
     providerSelect.value = provider;
     await selectProvider(provider);
