@@ -28,7 +28,7 @@ function option(label, value, disabled = false) {
 
 function fillModels(select, provider, current) {
   const info = catalog.find((item) => item.id === provider);
-  select.replaceChildren(option("Elegir modelo", ""));
+  select.replaceChildren(option(provider ? "Elegir modelo" : "Elegí proveedor", ""));
   for (const model of info?.models || []) {
     select.appendChild(option(model.label || model.id, model.id));
   }
@@ -53,8 +53,7 @@ async function loadConfig() {
     fillModels(modelSelect, data.current?.provider, data.current?.model);
     configLoaded = true;
   } catch (error) {
-    const label = $("#settings-note");
-    if (label) label.textContent = error.message;
+    showNotice(`No se pudo cargar la lista de modelos: ${error.message}`);
   }
 }
 

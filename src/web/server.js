@@ -87,8 +87,8 @@ export async function startWebServer(options = {}) {
 
   const config = await loadConfig();
   const catalog = buildCatalog(config);
-  const providerId = initialProvider || config.provider || null;
-  const model = initialModel || config.model || getDefaultModel(providerId, catalog);
+  let providerId = initialProvider || config.provider || null;
+  let model = initialModel || config.model || getDefaultModel(providerId, catalog);
 
   let session = new Session({ cwd, provider: providerId, model });
   const workspacesDir = join(SOLUNA_HOME, "workspaces");
@@ -588,7 +588,7 @@ export async function startWebServer(options = {}) {
       return pushSystem(`Provider "${info.label}" needs an API key first.`);
     }
     providerId = id;
-    model = initialModel || getDefaultModel(id, catalog) || model;
+    model = getDefaultModel(id, catalog) || model;
     session.provider = providerId;
     session.model = model;
     session.scheduleSave();
