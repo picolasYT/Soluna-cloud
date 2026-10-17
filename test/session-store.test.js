@@ -50,6 +50,15 @@ test("saveConfig round-trips and merges", async () => {
   assert.equal(merged.provider, "groq");
 });
 
+test("a failed config write does not block the next API key save", async () => {
+  const { saveConfig, saveApiKey, loadConfig } = await import("../src/core/session-store.js");
+  const circular = {};
+  circular.self = circular;
+  await assert.rejects(saveConfig({ invalid: circular }), /circular/i);
+  await saveApiKey("openrouter", "recovered-key");
+  assert.equal((await loadConfig()).apiKeys.openrouter, "recovered-key");
+});
+
 test("saveApiKey and resolveApiKey with env precedence", async () => {
   const { saveApiKey, resolveApiKey, loadConfig } = await import("../src/core/session-store.js");
   await saveApiKey("groq", "stored-key");

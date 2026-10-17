@@ -54,6 +54,25 @@ test("cloud web entry requires login and accepts a private token cookie", async 
   assert.equal(state.status, 200);
   assert.equal((await state.json()).cwd, cwd);
 
+  const saveKey = await fetch(`${base}/api/save-key`, {
+    method: "POST",
+    headers: { Cookie: cookie.split(";")[0], "Content-Type": "application/json" },
+    body: JSON.stringify({ provider: "openrouter", key: "local-test-key" }),
+  });
+  assert.equal(saveKey.status, 200);
+  const config = await fetch(`${base}/api/config`, { headers: { Cookie: cookie.split(";")[0] } });
+  const provider = (await config.json()).providers.find((item) => item.id === "openrouter");
+  assert.equal(provider.ready, true);
+  assert.equal(provider.keySource, "saved in config");
+
+  const badKey = await fetch(`${base}/api/save-key`, {
+    method: "POST",
+    headers: { Cookie: cookie.split(";")[0], "Content-Type": "application/json" },
+    body: JSON.stringify({ provider: "unknown", key: "test" }),
+  });
+  assert.equal(badKey.status, 400);
+  assert.match((await badKey.json()).error, /proveedor válido/);
+
   const app = await fetch(`${base}/`, { headers: { Cookie: cookie.split(";")[0] } });
   assert.match(await app.text(), /¿Qué hacemos/);
   const client = await fetch(`${base}/cloud.js`, { headers: { Cookie: cookie.split(";")[0] } });

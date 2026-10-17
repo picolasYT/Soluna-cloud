@@ -8,7 +8,13 @@ let configLoaded = false;
 
 async function request(path, options) {
   const response = await api(path, options);
-  if (!response.ok) throw new Error(response.status === 401 ? "Sesión no autorizada. Volvé a iniciar sesión." : `Error ${response.status}`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    const reason = typeof body?.error === "string" ? body.error : "";
+    throw new Error(response.status === 401
+      ? "Sesión no autorizada. Volvé a iniciar sesión."
+      : reason || `Error ${response.status}`);
+  }
   return response.status === 204 ? null : response.json();
 }
 

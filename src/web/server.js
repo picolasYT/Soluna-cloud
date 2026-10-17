@@ -608,6 +608,12 @@ export async function startWebServer(options = {}) {
   }
 
   async function handleSaveKey(provider, key) {
+    if (!getProviderInfo(provider, catalog)) {
+      throw Object.assign(new Error("Elegí un proveedor válido antes de guardar la clave."), { status: 400 });
+    }
+    if (typeof key !== "string" || !key.trim()) {
+      throw Object.assign(new Error("Ingresá una clave API antes de guardarla."), { status: 400 });
+    }
     await saveApiKey(provider, key || null);
     const cfg = await loadConfig();
     Object.assign(config, cfg);
@@ -901,7 +907,11 @@ export async function startWebServer(options = {}) {
       }
       return await serveStatic(req, res, path);
     } catch (err) {
-      sendError(res, 500, err.message || "Internal error");
+      const storageError = ["EACCES", "EPERM", "EROFS", "ENOSPC"].includes(err.code);
+      const message = storageError
+        ? `No se pudo guardar la clave en ${SOLUNA_HOME}: ${err.code}. Revisá el disco y los permisos de escritura del servicio en Render.`
+        : err.message || "Internal error";
+      sendError(res, err.status || 500, message);
     }
   });
 

@@ -1,15 +1,14 @@
 # Soluna Cloud en Render
 
-Esta edición incluye el agente de Soluna y una interfaz web renovada. El ZIP es
-el código fuente completo. Render **no permite subir un ZIP directamente** como
-origen de un servicio: necesita un repositorio Git o una imagen Docker en un
-registro. No hace falta usar GitHub.
+Esta edición incluye el agente de Soluna y una interfaz web renovada. Render
+puede desplegar este repositorio directamente mediante `render.yaml` o usar
+una imagen Docker creada con el `Dockerfile`.
 
-## Opción 1: GitLab o Bitbucket
+## Opción 1: este repositorio Git
 
-1. Descomprimí el ZIP y subí su contenido a un repositorio privado en GitLab o
-   Bitbucket. El archivo `render.yaml` debe quedar en la raíz.
-2. Conectá ese proveedor en Render y creá un **Blueprint** con el repositorio.
+1. Conectá el repositorio de Soluna en Render y creá un **Blueprint**. Render
+   leerá `render.yaml` desde la raíz.
+2. Revisá el plan y el disco en el panel antes de crear el servicio.
 3. Render instalará las dependencias con `npm ci` e iniciará
    `node bin/soluna-web.js`.
 4. En la sección **Environment** del servicio, consultá el valor generado de
@@ -18,10 +17,10 @@ registro. No hace falta usar GitHub.
 El Blueprint usa el plan `starter` con un disco persistente de 1 GB. Ese plan
 tiene costo. El disco conserva proyectos importados, sesiones y configuración.
 
-## Opción 2: sin repositorio Git, usando Docker Hub
+## Opción 2: Docker Hub
 
-Necesitás Docker instalado y una cuenta en Docker Hub. Desde la carpeta
-descomprimida, reemplazá `TU_USUARIO` y ejecutá:
+Necesitás Docker instalado y una cuenta en Docker Hub. Desde la carpeta del
+proyecto, reemplazá `TU_USUARIO` y ejecutá:
 
 ```sh
 docker login
@@ -50,3 +49,11 @@ proyectos. La primera versión no incluye importación de repositorios privados.
 
 Mantené el token privado: después de iniciar sesión, Soluna puede ejecutar
 comandos de shell dentro de su entorno, sin pedir confirmación adicional.
+
+## Si falla el guardado de una API key
+
+La interfaz muestra el motivo que devuelve el servidor. Si indica `EACCES`,
+`EPERM`, `EROFS` o `ENOSPC`, revisá que `SOLUNA_HOME` coincida con el punto de
+montaje del disco y que el servicio pueda escribir allí. En el Blueprint es
+`/opt/render/project/src/.soluna`; en la imagen Docker es `/var/soluna`.
+No compartas la API key ni el token al informar un error.

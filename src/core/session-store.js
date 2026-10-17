@@ -187,7 +187,9 @@ export async function saveApiKeySet(providerId, keys) {
 let configQueue = Promise.resolve();
 
 export function saveConfig(patch) {
-  configQueue = configQueue.then(async () => {
+  // A failed write must not poison every future attempt. The caller still
+  // receives the failure, while the next queued save gets a fresh chance.
+  configQueue = configQueue.catch(() => {}).then(async () => {
     const current = await loadConfig();
     const next = { ...current, ...patch };
     await writeJSONAtomic(CONFIG_PATH, next);
