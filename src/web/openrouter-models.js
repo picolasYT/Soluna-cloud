@@ -18,6 +18,13 @@ export async function fetchOpenRouterModels(apiKey, fetchImpl = fetch) {
       seen.add(item.id);
       return true;
     })
-    .map((item) => ({ id: item.id, label: typeof item.name === "string" && item.name ? item.name : item.id }))
+    .map((item) => ({
+      id: item.id,
+      label: typeof item.name === "string" && item.name ? item.name : item.id,
+      free: item.pricing?.prompt != null && item.pricing?.completion != null
+        && Number(item.pricing.prompt) === 0 && Number(item.pricing.completion) === 0,
+      tools: Array.isArray(item.supported_parameters) && item.supported_parameters.includes("tools"),
+      contextLength: Number(item.context_length) || null,
+    }))
     .sort((a, b) => a.label.localeCompare(b.label, "es", { sensitivity: "base" }));
 }

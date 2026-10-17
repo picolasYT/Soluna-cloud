@@ -15,3 +15,14 @@ Las instrucciones paso a paso y las variables necesarias están en
 
 El Blueprint usa una instancia Starter paga con disco persistente. Guardá el
 token de acceso y las API keys de manera privada.
+
+
+## Mejoras de Cloud (17/10/2026)
+
+- En Configuración, OpenRouter permite buscar en el catálogo completo, filtrar modelos gratuitos o con herramientas y actualizar la lista sin esperar a que venza la caché. Todos los modelos siguen disponibles si no activás filtros. Los filtros dependen de los datos que informa OpenRouter; un precio cero no garantiza disponibilidad o ausencia de límites.
+- El botón **Exportar** descarga la conversación activa en JSON, incluyendo mensajes y uso de tokens. No incluye las claves de configuración.
+- Retomar una sesión restaura también su proveedor, modelo y uso. Crear una tarea nueva reinicia los contadores.
+- Se corrigieron los comandos `/clear` y `/resume`, el estado de trabajo al finalizar y los errores HTTP que antes se mostraban como envíos exitosos. Si falla el envío, el texto queda disponible para reintentar.
+- Los cambios de sesión y modelo durante una tarea reciben un aviso para esperar a que termine.
+
+Validación: `npm test` usa servidores locales y respuestas simuladas de OpenRouter; no consume saldo de API. La conexión real con un proveedor requiere una clave válida en tu instancia.

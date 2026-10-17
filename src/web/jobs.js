@@ -66,6 +66,7 @@ export class Jobs extends EventEmitter {
       this.running = null;
       // Any request queued while this one ran gets its turn now.
       if (this.pending.length > 0) this.#drain();
+      else this.emit("idle");
     }
   }
 

@@ -23,7 +23,14 @@ function apiUrl(path) {
   if (token) url.searchParams.set("token", token);
   return url.pathname + url.search;
 }
-function apiFetch(path, options) { return fetch(apiUrl(path), options); }
+async function apiFetch(path, options) {
+  const response = await fetch(apiUrl(path), options);
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.error || `Error ${response.status}`);
+  }
+  return response;
+}
 window.solunaApiUrl = apiUrl;
 window.solunaFetch = apiFetch;
 
@@ -120,8 +127,8 @@ function sendMessage() {
   input.style.height = "auto";
 
   if (text.startsWith("/")) {
-    if (text === "/clear") { clearTranscript(); }
-    apiFetch("/api/message", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+    apiFetch("/api/message", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) })
+      .catch((error) => { input.value = text; addErrorLine(error.message); });
     return;
   }
 
@@ -135,7 +142,13 @@ function sendMessage() {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text }),
-  }).catch((e) => addErrorLine(e.message));
+  }).catch((e) => {
+    input.value = text;
+    state.streaming = false;
+    setBusy(false);
+    if (streamEl) { streamEl.remove(); streamEl = null; }
+    addErrorLine(e.message);
+  });
 }
 
 function cancelRun() {
@@ -149,7 +162,6 @@ function cancelRun() {
 function bindSidebar() {
   $("#sidebar-toggle").addEventListener("click", () => $(".sidebar").classList.toggle("open"));
   $("#sidebar-close").addEventListener("click", () => $(".sidebar").classList.remove("open"));
-  $("#btn-new").addEventListener("click", () => { clearTranscript(); hideEmpty(); });
   $("#btn-save").addEventListener("click", () => addSystemLine("Session saves automatically on exit."));
   $("#btn-theme").addEventListener("click", toggleTheme);
 }
@@ -394,6 +406,7 @@ function scrollBottom() {
 /* ---------------- State ---------------- */
 
 function applyState(s) {
+  window.dispatchEvent(new CustomEvent("soluna-state", { detail: s }));
   if (s.usage) state.usage = s.usage;
   if (s.contextUsed != null) state.contextUsed = s.contextUsed;
   if (s.contextLimit != null) state.contextLimit = s.contextLimit;

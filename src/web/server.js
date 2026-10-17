@@ -98,6 +98,8 @@ export async function startWebServer(options = {}) {
   let openRouterModelCache = null;
   let openRouterModelPending = null;
   const jobs = new Jobs();
+  jobs.on("idle", () => broadcastState());
+  jobs.on("failed", ({ error }) => pushError(error));
   const clients = new Set();
   const usage = { input: 0, output: 0, turns: 0, toolCalls: 0 };
   let activeController = null;
@@ -342,6 +344,7 @@ export async function startWebServer(options = {}) {
       session.messages = result.messages.filter((m) => m.role !== "system");
       session.summary = result.summary || session.summary;
       usage.turns += 1;
+      session.usage = { ...usage };
       session.scheduleSave();
     } finally {
       if (activeController === controller) activeController = null;
@@ -408,7 +411,7 @@ export async function startWebServer(options = {}) {
     const clean = String(text).trim();
 
     if (clean.startsWith("/")) {
-      handleCommand(clean);
+      enqueue("command", { label: clean }, () => handleCommand(clean));
       return;
     }
 
@@ -418,10 +421,10 @@ export async function startWebServer(options = {}) {
     append("run-queued", { id });
   }
 
-  function handleCommand(raw) {
+  async function handleCommand(raw) {
     const text = String(raw || "").trim();
     const spaceAt = text.indexOf(" ");
-    const name = (spaceAt === -1 ? text.slice(0) : text.slice(0, spaceAt)).toLowerCase();
+    const name = (spaceAt === -1 ? text.slice(1) : text.slice(1, spaceAt)).toLowerCase();
     const args = spaceAt === -1 ? "" : text.slice(spaceAt + 1).trim();
 
     pushSystem(`/${name} ${args}`.trim());
@@ -445,10 +448,12 @@ export async function startWebServer(options = {}) {
         );
         break;
       case "resume":
-        latestSession(workspace.root).then((data) => {
+        {
+          const data = await latestSession(workspace.root);
           if (!data) return pushSystem("No previous session for this directory.");
+          await session.flush();
           applySession(data);
-        });
+        }
         break;
       case "cwd": {
         if (!args) return pushSystem(`Working directory: ${workspace.root}`);
@@ -504,18 +509,11 @@ export async function startWebServer(options = {}) {
   }
 
   function applySession(data) {
-    const restored = Session.fromJSON(data);
-    session.messages = restored.messages;
-    session.summary = restored.summary;
-    session.provider = restored.provider || session.provider;
-    session.model = restored.model || session.model;
-    session.id = restored.id;
-    session.title = restored.title;
-    usage.input = restored.usage?.input || 0;
-    usage.output = restored.usage?.output || 0;
-    usage.turns = restored.usage?.turns || 0;
-    usage.toolCalls = restored.usage?.toolCalls || 0;
-    session.scheduleSave();
+    session = Session.fromJSON(data);
+    providerId = session.provider || providerId;
+    model = session.model || model;
+    Object.assign(usage, session.usage);
+    const restored = session;
     append("session-restored", {
       id: restored.id,
       messages: restored.messages,
@@ -546,6 +544,7 @@ export async function startWebServer(options = {}) {
     workspace.allowDirectory(destination);
     workspace.chdir(destination);
     session = new Session({ cwd: destination, provider: providerId, model });
+    Object.assign(usage, session.usage);
     append("clear", {});
     append("workspace-changed", { cwd: destination });
     broadcastState();
@@ -588,9 +587,9 @@ export async function startWebServer(options = {}) {
 
   async function handleSetProvider(id) {
     const info = getProviderInfo(id, catalog);
-    if (!info) return pushError(`Unknown provider "${id}".`);
+    if (!info) throw Object.assign(new Error("Proveedor desconocido."), { status: 400 });
     if (info.requiresKey && !isProviderReady(id, catalog, config)) {
-      return pushSystem(`Provider "${info.label}" needs an API key first.`);
+      throw Object.assign(new Error(`Guardá una clave API para ${info.label}.`), { status: 400 });
     }
     providerId = id;
     model = getDefaultModel(id, catalog) || model;
@@ -603,8 +602,10 @@ export async function startWebServer(options = {}) {
   }
 
   async function handleSetModel(id) {
-    if (!id) return;
-    model = id;
+    if (typeof id !== "string" || !id.trim() || id.length > 256) {
+      throw Object.assign(new Error("Ingresá un ID de modelo válido."), { status: 400 });
+    }
+    model = id.trim();
     session.model = model;
     session.scheduleSave();
     saveConfig({ provider: providerId, model }).catch(() => {});
@@ -619,7 +620,7 @@ export async function startWebServer(options = {}) {
     if (typeof key !== "string" || !key.trim()) {
       throw Object.assign(new Error("Ingresá una clave API antes de guardarla."), { status: 400 });
     }
-    await saveApiKey(provider, key || null);
+    await saveApiKey(provider, key.trim());
     if (provider === "openrouter") openRouterModelCache = null;
     const cfg = await loadConfig();
     Object.assign(config, cfg);
@@ -653,7 +654,7 @@ export async function startWebServer(options = {}) {
       req.on("data", (c) => {
         size += c.length;
         if (size > limit) {
-          reject(new Error("Request body too large"));
+          reject(Object.assign(new Error("Solicitud demasiado grande."), { status: 413 }));
           req.destroy();
           return;
         }
@@ -664,12 +665,21 @@ export async function startWebServer(options = {}) {
     });
   }
 
+  async function readJSONBody(req) {
+    const body = JSON.parse((await readBody(req)) || "{}");
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      throw Object.assign(new Error("La solicitud debe ser un objeto JSON."), { status: 400 });
+    }
+    return body;
+  }
+
   function authOk(req) {
     if (!token) return true;
     const header = req.headers.authorization || "";
     const q = new URL(req.url, "http://localhost");
     const cookie = (req.headers.cookie || "").split(";").map((part) => part.trim()).find((part) => part.startsWith("soluna_access="));
-    const cookieToken = cookie ? decodeURIComponent(cookie.slice("soluna_access=".length)) : "";
+    let cookieToken = "";
+    try { cookieToken = cookie ? decodeURIComponent(cookie.slice("soluna_access=".length)) : ""; } catch {}
     return secureEqual(header.replace(/^Bearer\s+/i, ""), token)
       || secureEqual(q.searchParams.get("token") || "", token)
       || secureEqual(cookieToken, token);
@@ -684,7 +694,7 @@ export async function startWebServer(options = {}) {
   async function handleApi(req, res, path, query) {
     if (req.method === "POST" && path === "/api/auth") {
       if (!token) return sendError(res, 400, "Cloud access token is not configured");
-      const body = JSON.parse((await readBody(req)) || "{}");
+      const body = await readJSONBody(req);
       if (!secureEqual(body.token || "", token)) return sendError(res, 401, "Invalid access token");
       const secure = req.socket.encrypted || req.headers["x-forwarded-proto"] === "https";
       res.setHeader("Set-Cookie", `soluna_access=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800${secure ? "; Secure" : ""}`);
@@ -749,7 +759,7 @@ export async function startWebServer(options = {}) {
       const cfg = await loadConfig();
       const apiKey = resolveApiKey("openrouter", info.envKey, cfg);
       if (!apiKey) return sendError(res, 400, "Guardá tu clave de OpenRouter para cargar todos los modelos.");
-      if (openRouterModelCache?.expires > Date.now() && openRouterModelCache.key === apiKey) {
+      if (query.get("refresh") !== "1" && openRouterModelCache?.expires > Date.now() && openRouterModelCache.key === apiKey) {
         return sendJSON(res, 200, { models: openRouterModelCache.models, source: "openrouter" });
       }
       try {
@@ -777,7 +787,7 @@ export async function startWebServer(options = {}) {
     if (req.method === "POST" && path === "/api/workspaces/import") {
       if (!authOk(req)) return sendError(res, 401, "Unauthorized");
       if (jobs.running || jobs.queuedCount) return sendError(res, 409, "Wait for the active task to finish before changing projects");
-      const body = JSON.parse((await readBody(req)) || "{}");
+      const body = await readJSONBody(req);
       let repoUrl;
       try { repoUrl = new URL(String(body.url || "")); } catch { return sendError(res, 400, "Enter a valid public GitHub repository URL"); }
       const parts = repoUrl.pathname.split("/").filter(Boolean);
@@ -808,7 +818,7 @@ export async function startWebServer(options = {}) {
     if (req.method === "POST" && path === "/api/workspaces/switch") {
       if (!authOk(req)) return sendError(res, 401, "Unauthorized");
       if (jobs.running || jobs.queuedCount) return sendError(res, 409, "Wait for the active task to finish before changing projects");
-      const body = JSON.parse((await readBody(req)) || "{}");
+      const body = await readJSONBody(req);
       if (!/^[A-Za-z0-9_.-]+__[A-Za-z0-9_.-]+$/.test(String(body.id || ""))) return sendError(res, 400, "Workspace id is invalid");
       try {
         const cwd = await switchWorkspace(body.id);
@@ -821,6 +831,7 @@ export async function startWebServer(options = {}) {
       if (jobs.running || jobs.queuedCount) return sendError(res, 409, "Wait for the active task to finish before starting a new session");
       await session.flush();
       session = new Session({ cwd: workspace.root, provider: providerId, model });
+      Object.assign(usage, session.usage);
       append("clear", {});
       broadcastState();
       return sendJSON(res, 200, { ok: true, id: session.id });
@@ -828,22 +839,22 @@ export async function startWebServer(options = {}) {
 
     if (req.method === "POST" && path === "/api/message") {
       if (!authOk(req)) return sendError(res, 401, "Unauthorized");
-      const body = JSON.parse((await readBody(req)) || "{}");
-      if (!body.text) return sendError(res, 400, "text is required");
+      const body = await readJSONBody(req);
+      if (typeof body.text !== "string" || !body.text.trim()) return sendError(res, 400, "Ingresá un mensaje de texto.");
       handleMessage(body.text);
       return sendJSON(res, 200, { ok: true });
     }
 
     if (req.method === "POST" && path === "/api/ask") {
       if (!authOk(req)) return sendError(res, 401, "Unauthorized");
-      const body = JSON.parse((await readBody(req)) || "{}");
+      const body = await readJSONBody(req);
       finishAsk(Array.isArray(body.answers) ? body.answers : []);
       return sendJSON(res, 200, { ok: true });
     }
 
     if (req.method === "POST" && path === "/api/cancel") {
       if (!authOk(req)) return sendError(res, 401, "Unauthorized");
-      const body = JSON.parse((await readBody(req)) || "{}");
+      const body = await readJSONBody(req);
       const running = jobs.running?.id === body.id;
       if (running) activeController?.abort();
       const ok = running || jobs.cancel(body.id);
@@ -852,23 +863,31 @@ export async function startWebServer(options = {}) {
 
     if (req.method === "POST" && path === "/api/set-provider") {
       if (!authOk(req)) return sendError(res, 401, "Unauthorized");
-      const body = JSON.parse((await readBody(req)) || "{}");
+      const body = await readJSONBody(req);
+      if (jobs.running || jobs.queuedCount) return sendError(res, 409, "Esperá a que termine la tarea para cambiar el proveedor.");
       await handleSetProvider(body.provider);
       return sendJSON(res, 200, { ok: true });
     }
 
     if (req.method === "POST" && path === "/api/set-model") {
       if (!authOk(req)) return sendError(res, 401, "Unauthorized");
-      const body = JSON.parse((await readBody(req)) || "{}");
+      const body = await readJSONBody(req);
+      if (jobs.running || jobs.queuedCount) return sendError(res, 409, "Esperá a que termine la tarea para cambiar el modelo.");
       await handleSetModel(body.model);
       return sendJSON(res, 200, { ok: true });
     }
 
     if (req.method === "POST" && path === "/api/save-key") {
       if (!authOk(req)) return sendError(res, 401, "Unauthorized");
-      const body = JSON.parse((await readBody(req)) || "{}");
+      const body = await readJSONBody(req);
       await handleSaveKey(body.provider, body.key);
       return sendJSON(res, 200, { ok: true });
+    }
+
+    if (req.method === "GET" && path === "/api/sessions/export") {
+      if (!authOk(req)) return sendError(res, 401, "Unauthorized");
+      res.setHeader("Content-Disposition", `attachment; filename="soluna-${session.id}.json"`);
+      return sendJSON(res, 200, { ...session.toJSON(), usage: { ...usage } });
     }
 
     if (req.method === "GET" && path === "/api/sessions") {
@@ -883,16 +902,23 @@ export async function startWebServer(options = {}) {
 
     if (req.method === "POST" && path === "/api/sessions/load") {
       if (!authOk(req)) return sendError(res, 401, "Unauthorized");
-      const body = JSON.parse((await readBody(req)) || "{}");
+      const body = await readJSONBody(req);
+      if (jobs.running || jobs.queuedCount) return sendError(res, 409, "Esperá a que termine la tarea para retomar otra sesión.");
+      if (body.id != null && (typeof body.id !== "string" || !/^[A-Za-z0-9_-]+$/.test(body.id))) return sendError(res, 400, "ID de sesión inválido.");
       const data = body.id ? await loadSession(body.id) : await latestSession(workspace.root);
-      if (!data) return sendError(res, 404, "Session not found");
+      if (!data || resolve(data.cwd) !== workspace.root) return sendError(res, 404, "Session not found");
+      await session.flush();
       applySession(data);
       return sendJSON(res, 200, { ok: true });
     }
 
     if (req.method === "POST" && path === "/api/sessions/delete") {
       if (!authOk(req)) return sendError(res, 401, "Unauthorized");
-      const body = JSON.parse((await readBody(req)) || "{}");
+      const body = await readJSONBody(req);
+      if (typeof body.id !== "string" || !/^[A-Za-z0-9_-]+$/.test(body.id)) return sendError(res, 400, "ID de sesión inválido.");
+      const data = await loadSession(body.id);
+      if (!data || resolve(data.cwd) !== workspace.root) return sendError(res, 404, "Session not found");
+      if (body.id === session.id) return sendError(res, 409, "No se puede eliminar la sesión activa.");
       const ok = await deleteSession(body.id);
       return sendJSON(res, 200, { ok });
     }
@@ -947,7 +973,7 @@ export async function startWebServer(options = {}) {
       const message = storageError
         ? `No se pudo guardar la clave en ${SOLUNA_HOME}: ${err.code}. Revisá el disco y los permisos de escritura del servicio en Render.`
         : err.message || "Internal error";
-      sendError(res, err.status || 500, message);
+      sendError(res, err.status || (err instanceof SyntaxError ? 400 : 500), message);
     }
   });
 
@@ -1008,6 +1034,10 @@ export async function startWebServer(options = {}) {
     tokens: token ? [token] : [],
     jobs,
     async close() {
+      activeController?.abort();
+      for (const client of clients) client.res.end();
+      await jobs.waitIdle();
+      await session.flush();
       await new Promise((r) => server.close(r));
     },
   };

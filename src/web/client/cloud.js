@@ -45,18 +45,25 @@ function availableModels(provider) {
 }
 
 function renderModelSearch(provider) {
+  for (const id of ["#models-free", "#models-tools"]) {
+    $(id).disabled = provider !== "openrouter";
+    if (provider !== "openrouter") $(id).checked = false;
+  }
+  $("#models-refresh").disabled = provider !== "openrouter";
   const models = availableModels(provider);
   const term = $("#model-search").value.trim().toLocaleLowerCase();
   const matches = term
     ? models.filter((item) => `${item.label} ${item.id}`.toLocaleLowerCase().includes(term))
     : models;
+  const filtered = matches.filter((item) => (!$("#models-free").checked || item.free)
+    && (!$("#models-tools").checked || item.tools));
   const list = $("#settings-model");
-  list.replaceChildren(...matches.map((item) => option(`${item.label} · ${item.id}`, item.id)));
-  if (matches.some((item) => item.id === modelSelect.value)) list.value = modelSelect.value;
-  $("#model-count").textContent = term ? `${matches.length} de ${models.length}` : `${models.length} modelos`;
+  list.replaceChildren(...filtered.map((item) => option(`${item.free ? "Gratis · " : ""}${item.label} · ${item.id}`, item.id)));
+  if (filtered.some((item) => item.id === modelSelect.value)) list.value = modelSelect.value;
+  $("#model-count").textContent = `${filtered.length} de ${models.length} modelos`;
 }
 
-async function loadProviderModels(provider, current) {
+async function loadProviderModels(provider, current, refresh = false) {
   const requestId = ++modelsRequestId;
   if (provider !== "openrouter") {
     renderModelSearch(provider);
@@ -64,14 +71,15 @@ async function loadProviderModels(provider, current) {
   }
   $("#model-count").textContent = "Cargando catálogo…";
   try {
-    const result = await request(`/api/models?provider=${encodeURIComponent(provider)}`);
+    const result = await request(`/api/models?provider=${encodeURIComponent(provider)}${refresh ? "&refresh=1" : ""}`);
     if (requestId !== modelsRequestId || providerSelect.value !== provider) return;
     providerModels.set(provider, result.models);
     fillModels(modelSelect, provider, current || modelSelect.value);
     renderModelSearch(provider);
   } catch (error) {
     if (requestId !== modelsRequestId || providerSelect.value !== provider) return;
-    $("#model-count").textContent = "Lista parcial";
+    renderModelSearch(provider);
+    $("#model-count").textContent += " · lista parcial";
     showNotice(`No se pudo cargar el catálogo completo de OpenRouter: ${error.message}`);
   }
 }
@@ -132,11 +140,12 @@ async function loadSessions() {
           button.classList.add("active");
           $(".sidebar").classList.remove("open");
           $("#topbar-title").textContent = session.title || "Conversación";
+          await loadConfig();
         } catch (error) { showNotice(error.message); }
       });
       list.appendChild(button);
     }
-  } catch {}
+  } catch (error) { showNotice(`No se pudieron cargar las conversaciones: ${error.message}`); }
 }
 
 async function loadWorkspaces() {
@@ -173,7 +182,7 @@ async function loadWorkspaces() {
       });
       list.appendChild(button);
     }
-  } catch {}
+  } catch (error) { $("#workspace-note").textContent = error.message; }
 }
 
 async function selectProvider(provider) {
@@ -185,7 +194,7 @@ async function selectProvider(provider) {
     settingsProvider.value = provider;
     $("#model-hint").textContent = item?.models?.[0]?.id || provider;
     await loadProviderModels(provider, modelSelect.value);
-  } catch (error) { showNotice(error.message); }
+  } catch (error) { showNotice(error.message); await loadConfig(); }
 }
 
 async function selectModel(model) {
@@ -195,7 +204,7 @@ async function selectModel(model) {
     $("#model-hint").textContent = model;
     modelSelect.value = model;
     $("#settings-model").value = model;
-  } catch (error) { showNotice(error.message); }
+  } catch (error) { showNotice(error.message); await loadConfig(); }
 }
 
 function showNotice(message) {
@@ -246,11 +255,43 @@ $("#settings-save-key").addEventListener("click", async () => {
     await selectProvider(provider);
   } catch (error) { $("#settings-note").textContent = error.message; }
 });
-$("#btn-new").addEventListener("click", () => {
-  $("#topbar-title").textContent = "Nueva tarea";
-  document.querySelectorAll(".session-item").forEach((item) => item.classList.remove("active"));
-  request("/api/sessions/new", { method: "POST" }).catch((error) => showNotice(error.message));
-  loadSessions();
+$("#btn-new").addEventListener("click", async () => {
+  try {
+    await request("/api/sessions/new", { method: "POST" });
+    $("#topbar-title").textContent = "Nueva tarea";
+    document.querySelectorAll(".session-item").forEach((item) => item.classList.remove("active"));
+    await loadSessions();
+  } catch (error) { showNotice(error.message); }
+});
+$("#models-free").addEventListener("change", () => renderModelSearch(settingsProvider.value));
+$("#models-tools").addEventListener("change", () => renderModelSearch(settingsProvider.value));
+$("#models-refresh").addEventListener("click", async () => {
+  const button = $("#models-refresh");
+  button.disabled = true;
+  try { await loadProviderModels(settingsProvider.value, modelSelect.value, true); }
+  finally { button.disabled = false; }
+});
+$("#session-export").addEventListener("click", async () => {
+  try {
+    const data = await request("/api/sessions/export");
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `soluna-${data.id}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (error) { showNotice(error.message); }
+});
+window.addEventListener("soluna-state", (event) => {
+  const state = event.detail;
+  if (state.provider && (providerSelect.value !== state.provider || modelSelect.value !== state.model)) {
+    providerSelect.value = state.provider;
+    settingsProvider.value = state.provider;
+    fillModels(modelSelect, state.provider, state.model);
+    renderModelSearch(state.provider);
+  }
 });
 $("#sidebar-toggle-mobile").addEventListener("click", () => $(".sidebar").classList.toggle("open"));
 $("#composer-send").addEventListener("click", () => setTimeout(loadSessions, 1300));

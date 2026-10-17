@@ -25,7 +25,7 @@ test("cloud web entry requires login and accepts a private token cookie", async 
     assert.match(url, /openrouter\.ai\/api\/v1\/models\?output_modalities=all/);
     assert.equal(options.headers.Authorization, "Bearer local-test-key");
     return new Response(JSON.stringify({ data: [
-      { id: "openai/gpt-4o", name: "GPT-4o" },
+      { id: "openai/gpt-4o", name: "GPT-4o", pricing: { prompt: "0", completion: "0" }, supported_parameters: ["tools"], context_length: 128000 },
       ...Array.from({ length: 8 }, (_, index) => ({ id: `vendor/model-${index}`, name: `Model ${index}` })),
     ] }), { status: 200 });
   };
@@ -124,6 +124,68 @@ test("cloud web entry requires login and accepts a private token cookie", async 
     headers: { Cookie: cookie.split(";")[0] },
   });
   assert.equal(newSession.status, 200);
+
+  const headers = { Cookie: cookie.split(";")[0], "Content-Type": "application/json" };
+  const post = (path, body) => fetch(`${base}${path}`, { method: "POST", headers, body: JSON.stringify(body) });
+  assert.equal((await post("/api/set-provider", { provider: "unknown" })).status, 400);
+  assert.equal((await post("/api/set-model", { model: { id: "bad" } })).status, 400);
+  assert.equal((await post("/api/message", { text: {} })).status, 400);
+  assert.equal((await post("/api/message", { text: "   " })).status, 400);
+  assert.equal((await post("/api/sessions/load", { id: "../config" })).status, 400);
+  assert.equal((await post("/api/sessions/delete", { id: "../config" })).status, 400);
+  assert.equal((await post("/api/message", null)).status, 400);
+  const invalidJSON = await fetch(`${base}/api/message`, { method: "POST", headers, body: "{" });
+  assert.equal(invalidJSON.status, 400);
+  const brokenCookie = await fetch(`${base}/api/state`, { headers: { Cookie: "soluna_access=%broken" } });
+  assert.equal(brokenCookie.status, 401);
+
+  const freeModel = fullCatalog.models.find((item) => item.id === "openai/gpt-4o");
+  assert.equal(freeModel.free, true);
+  assert.equal(freeModel.tools, true);
+  assert.equal(freeModel.contextLength, 128000);
+  const refresh = await fetch(`${base}/api/models?provider=openrouter&refresh=1`, { headers });
+  assert.equal(refresh.status, 200);
+  assert.equal(modelRequests, 2);
+
+  const { Session, saveSession } = await import("../src/core/session-store.js");
+  const saved = new Session({ cwd, provider: "openrouter", model: "vendor/model-3" });
+  saved.messages = [{ role: "user", content: "Ejemplo exportable" }];
+  saved.usage = { input: 12, output: 8, turns: 1, toolCalls: 2 };
+  await saveSession(saved.toJSON());
+  assert.equal((await post("/api/sessions/load", { id: saved.id })).status, 200);
+  const restored = await (await fetch(`${base}/api/state`, { headers })).json();
+  assert.equal(restored.model, "vendor/model-3");
+  assert.deepEqual(restored.usage, saved.usage);
+  const exported = await fetch(`${base}/api/sessions/export`, { headers });
+  assert.match(exported.headers.get("content-disposition"), /attachment/);
+  const download = await exported.json();
+  assert.equal(download.messages[0].content, "Ejemplo exportable");
+  assert.deepEqual(download.usage, saved.usage);
+  assert.ok(!JSON.stringify(download).includes("local-test-key"));
+
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  instance.jobs.push({ id: "hold", run: () => gate });
+  try {
+    assert.equal((await post("/api/sessions/load", { id: saved.id })).status, 409);
+    assert.equal((await post("/api/sessions/new", {})).status, 409);
+    assert.equal((await post("/api/set-model", { model: "other" })).status, 409);
+    assert.equal((await post("/api/set-provider", { provider: "openrouter" })).status, 409);
+  } finally { release(); }
+  await instance.jobs.waitIdle();
+  assert.equal((await (await fetch(`${base}/api/state`, { headers })).json()).busy, false);
+  assert.equal((await post("/api/message", { text: "/clear" })).status, 200);
+  await instance.jobs.waitIdle();
+  const cleared = await (await fetch(`${base}/api/sessions/export`, { headers })).json();
+  assert.deepEqual(cleared.messages, []);
+
+  const outside = new Session({ cwd: join(tempRoot, "other"), provider: "openrouter" });
+  await saveSession(outside.toJSON());
+  assert.equal((await post("/api/sessions/load", { id: outside.id })).status, 404);
+  assert.equal((await post("/api/sessions/delete", { id: outside.id })).status, 404);
+  assert.equal((await post("/api/sessions/new", {})).status, 200);
+  const reset = await (await fetch(`${base}/api/state`, { headers })).json();
+  assert.deepEqual(reset.usage, { input: 0, output: 0, turns: 0, toolCalls: 0 });
 
   const health = await fetch(`${base}/healthz`);
   assert.equal(health.status, 200);
