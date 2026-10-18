@@ -80,18 +80,20 @@ function connect() {
 function handleEvent(ev) {
   switch (ev.kind) {
     case "user": addUserMessage(ev.text); break;
-    case "stream": appendStream(ev.content); break;
-    case "stream-end": finalizeStream(ev.text); break;
-    case "tool-live": upsertToolLive(ev); break;
-    case "tool": addToolResult(ev.entry); break;
+    case "stream": setActivity("Escribiendo respuesta…"); appendStream(ev.content); break;
+    case "stream-end": finalizeStream(ev.text); setActivity("Soluna está trabajando…"); break;
+    case "tool-live":
+      setActivity(["write", "edit"].includes(ev.name) ? "Modificando archivos…" : ev.name === "bash" ? "Ejecutando un comando…" : "Usando herramientas…");
+      upsertToolLive(ev); break;
+    case "tool": addToolResult(ev.entry); setActivity("Preparando respuesta…"); break;
     case "system": addSystemLine(ev.text); break;
-    case "retry": setRetry(ev.message); break;
+    case "retry": setActivity("Reintentando conexión…"); setRetry(ev.message); break;
     case "retry-end": setRetry(""); break;
     case "error": addErrorLine(ev.text); break;
     case "state": applyState(ev); break;
-    case "compacting": setCompacting(ev.message); break;
+    case "compacting": setActivity("Preparando contexto…"); setCompacting(ev.message); break;
     case "compacting-end": setCompacting(""); break;
-    case "ask": showAsk(ev.request); break;
+    case "ask": setActivity("Esperando tu respuesta…"); showAsk(ev.request); break;
     case "ask-done":
       if (pendingAsk?.id === ev.id) { pendingAsk = null; $("#ask-overlay").classList.remove("show"); }
       break;
@@ -142,7 +144,6 @@ function sendMessage() {
   state.streamText = "";
   state.streaming = true;
   setBusy(true);
-  appendStreamEl();
 
   apiFetch("/api/message", {
     method: "POST",
@@ -295,6 +296,7 @@ function hideEmpty() { $("#empty-state")?.style.setProperty("display", "none"); 
 function showEmpty() { $("#empty-state")?.style.setProperty("display", "flex"); }
 
 function clearTranscript() {
+  setActivity("");
   retryEl = null;
   streamEl = null;
   $("#transcript").replaceChildren(emptyStateEl);
@@ -485,6 +487,7 @@ function applyState(s) {
   if (s.currentRunId !== undefined) state.currentRunId = s.currentRunId;
   if (s.busy === false && streamEl) finalizeStream(state.streamText);
   if (s.busy != null) setBusy(s.busy);
+  if (s.askRequest) setActivity("Esperando tu respuesta…");
 
   if ($("#provider-name")) $("#provider-name").textContent = s.provider || "—";
   if ($("#provider-model")) $("#provider-model").textContent = s.model || "";
@@ -512,8 +515,16 @@ function applyState(s) {
   $("#context-limit").textContent = formatTokens(limit);
 }
 
+function setActivity(text) {
+  const activity = $("#chat-activity");
+  if (!activity) return;
+  activity.hidden = !state.busy || !text;
+  $("#chat-activity-text").textContent = text || "";
+}
+
 function setBusy(busy) {
   state.busy = busy;
+  setActivity(busy ? "Soluna está trabajando…" : "");
   const send = $("#composer-send");
   $("#status-pill").classList.toggle("busy", busy);
   $("#status-text").textContent = busy ? "trabajando…" : "en línea";
