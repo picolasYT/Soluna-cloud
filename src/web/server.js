@@ -3,8 +3,8 @@ import { timingSafeEqual } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { stat, createReadStream } from "node:fs";
-import { mkdir, readdir, stat as statP } from "node:fs/promises";
-import { extname, join, normalize, resolve, sep } from "node:path";
+import { mkdir, readdir, readFile, realpath, stat as statP } from "node:fs/promises";
+import { extname, join, normalize, relative, resolve, sep } from "node:path";
 
 import { Workspace, WorkspaceError } from "../core/workspace.js";
 import { createReadTool } from "../core/tools/read.js";
@@ -58,6 +58,17 @@ const MIME = {
   ".png": "image/png",
   ".ico": "image/x-icon",
   ".txt": "text/plain; charset=utf-8",
+  ".md": "text/markdown; charset=utf-8",
+  ".xml": "application/xml; charset=utf-8",
+  ".csv": "text/csv; charset=utf-8",
+  ".pdf": "application/pdf",
+  ".webp": "image/webp",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".avif": "image/avif",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
 };
 
 /**
@@ -99,7 +110,16 @@ export async function startWebServer(options = {}) {
   let openRouterModelPending = null;
   const jobs = new Jobs();
   jobs.on("idle", () => broadcastState());
-  jobs.on("failed", ({ error }) => pushError(error));
+  jobs.on("failed", ({ error }) => {
+    if (/\b503\b/.test(error) && /overload|temporarily|upstream|provider/i.test(error)) {
+      append("error", {
+        text: "El modelo seleccionado está saturado temporalmente. Elegí otro modelo en la barra superior o reenviá tu mensaje dentro de unos minutos.",
+        retryable: true,
+      });
+    } else if (/\b(aborted|abortada|cancelled|canceled)\b/i.test(error)) {
+      pushError("La solicitud fue cancelada.");
+    } else pushError(error);
+  });
   const clients = new Set();
   const usage = { input: 0, output: 0, turns: 0, toolCalls: 0 };
   let activeController = null;
@@ -279,12 +299,16 @@ export async function startWebServer(options = {}) {
 
   /** Run a conversation turn. Returns the updated message list. */
   async function runTurn(text) {
-    session.messages.push({ role: "user", content: text });
+    const userMessage = { role: "user", content: text };
+    session.messages.push(userMessage);
 
     append("user", { text });
 
     let provider = buildProvider(providerId);
-    if (!provider) return;
+    if (!provider) {
+      session.messages.pop();
+      return;
+    }
 
     const controller = new AbortController();
     activeController = controller;
@@ -322,6 +346,7 @@ export async function startWebServer(options = {}) {
           name,
           phase: error ? "error" : "done",
           args: args || {},
+          filePath: ["write", "edit"].includes(name) && args?.path ? relPath(args.path) : null,
           label: toolLabel(name, args || {}),
           duration: "",
           diff: res?.details?.diff || null,
@@ -371,6 +396,11 @@ export async function startWebServer(options = {}) {
       usage.turns += 1;
       session.usage = { ...usage };
       session.scheduleSave();
+    } catch (error) {
+      // A failed generation must not leave an unanswered user message in the
+      // model context; otherwise retrying would send the prompt twice.
+      if (session.messages.at(-1) === userMessage) session.messages.pop();
+      throw error;
     } finally {
       append("retry-end");
       if (activeController === controller) activeController = null;
@@ -411,6 +441,44 @@ export async function startWebServer(options = {}) {
     } catch {
       return String(p);
     }
+  }
+
+  async function resolveWorkspaceFile(pathname) {
+    const root = await realpath(workspace.root);
+    const requested = resolve(root, String(pathname || ""));
+    if (requested === root || !requested.startsWith(root + sep)) throw new Error("La ruta del archivo no es válida.");
+    const actual = await realpath(requested);
+    if (!actual.startsWith(root + sep)) throw new Error("El archivo está fuera del proyecto.");
+    const info = await statP(actual);
+    if (!info.isFile()) throw new Error("La ruta seleccionada no es un archivo.");
+    return { actual, info, path: relative(root, actual).split(sep).join("/") };
+  }
+
+  async function listWorkspaceFiles() {
+    const root = await realpath(workspace.root);
+    const files = [];
+    const ignored = new Set([".git", "node_modules", ".soluna", ".next", "dist", "build", "coverage"]);
+    async function walk(directory, depth = 0) {
+      if (depth > 12 || files.length >= 600) return;
+      let entries;
+      try { entries = await readdir(directory, { withFileTypes: true }); } catch { return; }
+      for (const entry of entries) {
+        if (files.length >= 600) break;
+        if (entry.name.startsWith(".") && [".git", ".soluna"].includes(entry.name)) continue;
+        const absolute = join(directory, entry.name);
+        if (entry.isDirectory()) {
+          if (!ignored.has(entry.name)) await walk(absolute, depth + 1);
+        } else if (entry.isFile()) {
+          try {
+            const info = await statP(absolute);
+            const path = relative(root, absolute).split(sep).join("/");
+            files.push({ path, name: entry.name, size: info.size, modified: info.mtime.toISOString(), type: extname(entry.name).slice(1).toLowerCase() || "archivo" });
+          } catch {}
+        }
+      }
+    }
+    await walk(root);
+    return files.sort((a, b) => a.path.localeCompare(b.path)).slice(0, 600);
   }
 
   /* ------------------------------ actions ------------------------------- */
@@ -769,6 +837,34 @@ export async function startWebServer(options = {}) {
     if (req.method === "GET" && path === "/api/state") {
       if (!authOk(req)) return sendError(res, 401, "Unauthorized");
       return sendJSON(res, 200, currentState());
+    }
+
+    if (req.method === "GET" && path === "/api/files") {
+      if (!authOk(req)) return sendError(res, 401, "Unauthorized");
+      const files = await listWorkspaceFiles();
+      return sendJSON(res, 200, { files, truncated: files.length >= 600 });
+    }
+
+    if (req.method === "GET" && path === "/api/file") {
+      if (!authOk(req)) return sendError(res, 401, "Unauthorized");
+      try {
+        const file = await resolveWorkspaceFile(query.get("path"));
+        const ext = extname(file.path).toLowerCase();
+        const contentType = MIME[ext] || "application/octet-stream";
+        const download = query.get("download") === "1";
+        if (file.info.size > (download ? 50 : 2) * 1024 * 1024) return sendError(res, 413, download ? "El archivo supera el límite de descarga de 50 MB." : "El archivo supera el límite de vista previa de 2 MB. Podés descargarlo.");
+        const safeName = file.path.split("/").at(-1).replace(/[\r\n"\\]/g, "_");
+        res.writeHead(200, {
+          "Content-Type": contentType,
+          "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${safeName}"`,
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff",
+          "Content-Security-Policy": "default-src 'none'; img-src data: https:; style-src 'unsafe-inline' https:; script-src 'unsafe-inline' https:; font-src data: https:; connect-src https:;",
+        });
+        return res.end(await readFile(file.actual));
+      } catch (error) {
+        return sendError(res, 404, error.message || "No se encontró el archivo.");
+      }
     }
 
     if (req.method === "GET" && path === "/api/config") {

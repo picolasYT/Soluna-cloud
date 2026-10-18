@@ -50,6 +50,7 @@ const state = {
 let es = null;
 let streamEl = null;
 let retryEl = null;
+let pendingMessage = "";
 
 /* ---------------- Bootstrap ---------------- */
 
@@ -57,6 +58,7 @@ function init() {
   bindComposer();
   bindSidebar();
   bindAsk();
+  bindFiles();
   bindSuggestions();
   connect();
   updateThemeIcon();
@@ -89,7 +91,13 @@ function handleEvent(ev) {
     case "system": addSystemLine(ev.text); break;
     case "retry": setActivity("Reintentando conexión…"); setRetry(ev.message); break;
     case "retry-end": setRetry(""); break;
-    case "error": addErrorLine(ev.text); break;
+    case "error":
+      addErrorLine(ev.text);
+      if (ev.retryable && pendingMessage && !$("#composer-input").value.trim()) {
+        $("#composer-input").value = pendingMessage;
+        $("#composer-input").dispatchEvent(new Event("input"));
+      }
+      break;
     case "state": applyState(ev); break;
     case "compacting": setActivity("Preparando contexto…"); setCompacting(ev.message); break;
     case "compacting-end": setCompacting(""); break;
@@ -98,6 +106,7 @@ function handleEvent(ev) {
       if (pendingAsk?.id === ev.id) { pendingAsk = null; $("#ask-overlay").classList.remove("show"); }
       break;
     case "clear": clearTranscript(); break;
+    case "workspace-changed": loadProjectFiles(); break;
     case "session-restored": restoreTranscript(ev.messages || []); break;
     case "run-queued": state.currentRunId = ev.id; break;
   }
@@ -141,6 +150,7 @@ function sendMessage() {
   }
 
   hideEmpty();
+  pendingMessage = text;
   state.streamText = "";
   state.streaming = true;
   setBusy(true);
@@ -171,6 +181,136 @@ function bindSidebar() {
   $("#sidebar-close").addEventListener("click", () => $(".sidebar").classList.remove("open"));
   $("#btn-save").addEventListener("click", () => addSystemLine("Session saves automatically on exit."));
   $("#btn-theme").addEventListener("click", toggleTheme);
+}
+
+let projectFiles = [];
+let activePreviewPath = "";
+
+function bindFiles() {
+  const overlay = $("#files-overlay");
+  $("#files-open").addEventListener("click", () => {
+    overlay.classList.add("show");
+    overlay.setAttribute("aria-hidden", "false");
+    loadProjectFiles();
+    setTimeout(() => $("#files-search").focus(), 50);
+  });
+  const close = () => { overlay.classList.remove("show"); overlay.setAttribute("aria-hidden", "true"); };
+  $("#files-close").addEventListener("click", close);
+  overlay.addEventListener("click", (event) => { if (event.target === overlay) close(); });
+  $("#files-refresh").addEventListener("click", loadProjectFiles);
+  $("#files-search").addEventListener("input", renderProjectFiles);
+  document.addEventListener("keydown", (event) => { if (event.key === "Escape" && overlay.classList.contains("show")) close(); });
+  loadProjectFiles();
+}
+
+async function loadProjectFiles() {
+  const list = $("#files-list");
+  list.innerHTML = '<div class="files-loading"><span class="spinner"></span> Cargando archivos…</div>';
+  try {
+    const response = await apiFetch("/api/files");
+    const result = await response.json();
+    projectFiles = result.files || [];
+    $("#files-count").textContent = projectFiles.length;
+    renderProjectFiles();
+    if (activePreviewPath && projectFiles.some((file) => file.path === activePreviewPath)) previewProjectFile(activePreviewPath);
+    if (result.truncated) list.insertAdjacentHTML("beforeend", '<div class="files-note">Se muestran los primeros 600 archivos.</div>');
+  } catch (error) {
+    list.textContent = error.message;
+  }
+}
+
+function renderProjectFiles() {
+  const list = $("#files-list");
+  const query = $("#files-search").value.trim().toLowerCase();
+  const matches = projectFiles.filter((file) => file.path.toLowerCase().includes(query));
+  list.replaceChildren();
+  if (!matches.length) {
+    const empty = el("div", "files-loading");
+    empty.textContent = projectFiles.length ? "No hay resultados." : "Todavía no hay archivos.";
+    list.appendChild(empty);
+    return;
+  }
+  for (const file of matches) {
+    const row = el("div", `file-row${activePreviewPath === file.path ? " active" : ""}`);
+    const open = el("button", "file-open");
+    open.type = "button";
+    open.innerHTML = `<span class="file-type-icon">${escapeHtml(fileIcon(file.type))}</span><span class="file-row-copy"><strong>${escapeHtml(file.name)}</strong><small>${escapeHtml(file.path)} · ${formatBytes(file.size)}</small></span>`;
+    open.addEventListener("click", () => previewProjectFile(file.path));
+    const download = el("a", "file-download");
+    download.href = apiUrl(`/api/file?path=${encodeURIComponent(file.path)}&download=1`);
+    download.download = file.name;
+    download.title = `Descargar ${file.name}`;
+    download.setAttribute("aria-label", `Descargar ${file.name}`);
+    download.textContent = "↓";
+    row.append(open, download);
+    list.appendChild(row);
+  }
+}
+
+async function previewProjectFile(path) {
+  activePreviewPath = path;
+  renderProjectFiles();
+  const file = projectFiles.find((item) => item.path === path);
+  const preview = $("#file-preview");
+  const ext = path.split(".").pop()?.toLowerCase() || "";
+  const fileUrl = apiUrl(`/api/file?path=${encodeURIComponent(path)}`);
+  const downloadUrl = apiUrl(`/api/file?path=${encodeURIComponent(path)}&download=1`);
+  const supportedPreview = ["html", "htm", "svg", "png", "jpg", "jpeg", "gif", "webp", "avif", "pdf"].includes(ext);
+  preview.replaceChildren();
+  const head = el("div", "preview-head");
+  const name = el("div", "preview-name");
+  name.innerHTML = `<strong>${escapeHtml(file?.name || path)}</strong><small>${escapeHtml(path)}</small>`;
+  const download = el("a", "btn btn-primary preview-download");
+  download.href = downloadUrl;
+  download.download = file?.name || "archivo";
+  download.textContent = "Descargar ↓";
+  head.append(name, download);
+  preview.appendChild(head);
+  if (supportedPreview) {
+    const frame = el("iframe", "preview-frame");
+    frame.title = `Vista previa de ${file?.name || path}`;
+    frame.setAttribute("sandbox", "allow-scripts");
+    frame.referrerPolicy = "no-referrer";
+    preview.appendChild(frame);
+    if (["html", "htm"].includes(ext)) {
+      try {
+        const response = await apiFetch(fileUrl);
+        const html = await response.text();
+        const policy = '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data: https:; style-src \'unsafe-inline\' https:; script-src \'unsafe-inline\'; font-src data: https:; connect-src \'none\'; form-action \'none\'; base-uri \'none\'">';
+        frame.srcdoc = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (head) => `${head}${policy}`) : `${policy}${html}`;
+      } catch (error) {
+        frame.remove();
+        const message = el("div", "files-loading");
+        message.textContent = error.message;
+        preview.appendChild(message);
+      }
+    } else frame.src = fileUrl;
+    return;
+  }
+  try {
+    const response = await apiFetch(fileUrl);
+    const text = await response.text();
+    const code = el("pre", "preview-code");
+    code.textContent = text;
+    preview.appendChild(code);
+  } catch (error) {
+    const message = el("div", "files-loading");
+    message.textContent = error.message;
+    preview.appendChild(message);
+  }
+}
+
+function fileIcon(type) {
+  if (["html", "htm"].includes(type)) return "◉";
+  if (["js", "ts", "jsx", "tsx", "py", "json", "css"].includes(type)) return "⌘";
+  if (["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(type)) return "▧";
+  return "▤";
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function toggleTheme() {
@@ -459,6 +599,26 @@ function addToolResult(entry) {
       inner.classList.toggle("open");
     });
   }
+  if (!isError && ["write", "edit"].includes(entry.name) && entry.filePath) {
+    const actions = el("div", "tool-file-actions");
+    const previewButton = el("button", "btn btn-ghost");
+    previewButton.type = "button";
+    previewButton.textContent = "Ver archivo";
+    previewButton.addEventListener("click", () => {
+      $("#files-overlay").classList.add("show");
+      $("#files-overlay").setAttribute("aria-hidden", "false");
+      $("#files-search").value = "";
+      loadProjectFiles().then(() => previewProjectFile(entry.filePath));
+    });
+    const download = el("a", "btn btn-ghost");
+    download.href = apiUrl(`/api/file?path=${encodeURIComponent(entry.filePath)}&download=1`);
+    download.download = entry.filePath.split("/").pop();
+    download.textContent = "Descargar ↓";
+    actions.append(previewButton, download);
+    inner.querySelector(".tool-card-body")?.appendChild(actions);
+    if (!inner.querySelector(".tool-card-body")) inner.appendChild(actions);
+    loadProjectFiles();
+  }
   scrollBottom();
 }
 
@@ -476,6 +636,7 @@ function scrollBottom() {
 /* ---------------- State ---------------- */
 
 function applyState(s) {
+  const wasBusy = state.busy;
   if (s.askRequest) showAsk(s.askRequest);
   else if (s.askRequest === null) { pendingAsk = null; $("#ask-overlay").classList.remove("show"); }
   window.dispatchEvent(new CustomEvent("soluna-state", { detail: s }));
@@ -487,6 +648,8 @@ function applyState(s) {
   if (s.currentRunId !== undefined) state.currentRunId = s.currentRunId;
   if (s.busy === false && streamEl) finalizeStream(state.streamText);
   if (s.busy != null) setBusy(s.busy);
+  if (wasBusy && s.busy === false) loadProjectFiles();
+  if (s.busy === false) pendingMessage = "";
   if (s.askRequest) setActivity("Esperando tu respuesta…");
 
   if ($("#provider-name")) $("#provider-name").textContent = s.provider || "—";
