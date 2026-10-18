@@ -106,7 +106,14 @@ function handleEvent(ev) {
       if (pendingAsk?.id === ev.id) { pendingAsk = null; $("#ask-overlay").classList.remove("show"); }
       break;
     case "clear": clearTranscript(); break;
-    case "workspace-changed": loadProjectFiles(); break;
+    case "workspace-changed":
+      activePreviewPath = "";
+      projectFiles = [];
+      $("#files-count").textContent = "0";
+      $("#files-search").value = "";
+      $("#file-preview").replaceChildren();
+      loadProjectFiles();
+      break;
     case "session-restored": restoreTranscript(ev.messages || []); break;
     case "run-queued": state.currentRunId = ev.id; break;
   }

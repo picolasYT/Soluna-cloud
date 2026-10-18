@@ -20,6 +20,7 @@ function parseArgs(args) {
     host: process.env.SOLUNA_WEB_HOST || "localhost",
     port: Number(process.env.SOLUNA_WEB_PORT || process.env.PORT || process.env.ZYN_WEB_PORT) || 3456,
     cwd: process.cwd(),
+    cleanWorkspace: true,
     unsafe: false,
     noMcp: false,
     token: process.env.SOLUNA_WEB_TOKEN || null,
@@ -41,6 +42,7 @@ function parseArgs(args) {
       case "--cwd":
       case "-d":
         options.cwd = resolve(args[++i]);
+        options.cleanWorkspace = false;
         break;
       case "--add-dir":
         options.addDir.push(resolve(args[++i]));
@@ -76,7 +78,7 @@ Usage:
 Options:
   --host <addr>     Interface to bind (default localhost)
   -p, --port <n>    Port (default ${options.port})
-  -d, --cwd <path>  Working directory (default cwd)
+  -d, --cwd <path>  Use an existing project (default: clean folder per chat)
   --add-dir <path>  Allow an extra directory
   --token <secret>  Require this token (URL query or Bearer header)
   --unsafe          Auto-approve commands and disable sandbox (explicit opt-in)
@@ -110,6 +112,7 @@ export async function runWeb(args = []) {
 
   const instance = await startWebServer({
     cwd: options.cwd,
+    cleanWorkspace: options.cleanWorkspace,
     host: options.host,
     port: options.port,
     addDir: options.addDir,

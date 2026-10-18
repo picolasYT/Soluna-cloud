@@ -3,10 +3,10 @@ import { timingSafeEqual } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { stat, createReadStream } from "node:fs";
-import { mkdir, readdir, readFile, realpath, stat as statP } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, realpath, stat as statP } from "node:fs/promises";
 import { extname, join, normalize, relative, resolve, sep } from "node:path";
 
-import { Workspace, WorkspaceError } from "../core/workspace.js";
+import { Workspace, WorkspaceError, isInside } from "../core/workspace.js";
 import { createReadTool } from "../core/tools/read.js";
 import { createWriteTool } from "../core/tools/write.js";
 import { createEditTool } from "../core/tools/edit.js";
@@ -92,19 +92,25 @@ export async function startWebServer(options = {}) {
     initialPrompt = null,
     token = null,
     modelFetch = fetch,
+    cleanWorkspace = false,
   } = options;
 
   // Real context limits (local cache, network optional).
   await loadModelLimits({ timeoutMs: 3000 });
 
-  const workspace = new Workspace(cwd, { allow: addDir, unsafe });
+  const chatWorkspacesDir = join(SOLUNA_HOME, "chat-workspaces");
+  async function createChatWorkspace() {
+    await mkdir(chatWorkspacesDir, { recursive: true });
+    return mkdtemp(join(chatWorkspacesDir, "chat-"));
+  }
+  const workspace = new Workspace(cleanWorkspace ? await createChatWorkspace() : cwd, { allow: addDir, unsafe });
 
   const config = await loadConfig();
   const catalog = buildCatalog(config);
   let providerId = initialProvider || config.provider || null;
   let model = initialModel || config.model || getDefaultModel(providerId, catalog);
 
-  let session = new Session({ cwd, provider: providerId, model });
+  let session = new Session({ cwd: workspace.root, provider: providerId, model });
   const workspacesDir = join(SOLUNA_HOME, "workspaces");
   let openRouterModelCache = null;
   let openRouterModelPending = null;
@@ -543,9 +549,10 @@ export async function startWebServer(options = {}) {
         break;
       case "resume":
         {
-          const data = await latestSession(workspace.root);
+          const data = await latestAccessibleSession();
           if (!data) return pushSystem("No previous session for this directory.");
           await session.flush();
+          await activateSessionWorkspace(data);
           applySession(data);
         }
         break;
@@ -618,6 +625,32 @@ export async function startWebServer(options = {}) {
     broadcastState();
   }
 
+  function sessionAccessible(data) {
+    if (!data?.cwd) return false;
+    const path = resolve(data.cwd);
+    if (!cleanWorkspace) return path === workspace.root;
+    return (path !== resolve(chatWorkspacesDir) && isInside(resolve(chatWorkspacesDir), path))
+      || (path !== resolve(workspacesDir) && isInside(resolve(workspacesDir), path));
+  }
+
+  async function accessibleSessions() {
+    const entries = await listSessions({ cwd: cleanWorkspace ? undefined : workspace.root, limit: Number.MAX_SAFE_INTEGER });
+    return entries.filter(sessionAccessible).slice(0, 30);
+  }
+
+  async function latestAccessibleSession() {
+    const [latest] = await accessibleSessions();
+    return latest ? loadSession(latest.id) : null;
+  }
+
+  async function activateSessionWorkspace(data) {
+    if (!cleanWorkspace) return;
+    const actual = await realpath(data.cwd);
+    if (!sessionAccessible({ cwd: actual })) throw new Error("Session workspace is unavailable");
+    workspace.resetRoot(actual, { allow: addDir });
+    append("workspace-changed", { cwd: actual });
+  }
+
   async function workspaceList() {
     await mkdir(workspacesDir, { recursive: true });
     const entries = await readdir(workspacesDir, { withFileTypes: true });
@@ -635,8 +668,7 @@ export async function startWebServer(options = {}) {
     const info = await statP(destination);
     if (!info.isDirectory()) throw new Error("Workspace does not exist");
     await session.flush();
-    workspace.allowDirectory(destination);
-    workspace.chdir(destination);
+    workspace.resetRoot(await realpath(destination), { allow: addDir });
     session = new Session({ cwd: destination, provider: providerId, model });
     Object.assign(usage, session.usage);
     append("clear", {});
@@ -953,6 +985,10 @@ export async function startWebServer(options = {}) {
       if (!authOk(req)) return sendError(res, 401, "Unauthorized");
       if (jobs.running || jobs.queuedCount) return sendError(res, 409, "Wait for the active task to finish before starting a new session");
       await session.flush();
+      if (cleanWorkspace) {
+        workspace.resetRoot(await createChatWorkspace(), { allow: addDir });
+        append("workspace-changed", { cwd: workspace.root });
+      }
       session = new Session({ cwd: workspace.root, provider: providerId, model });
       Object.assign(usage, session.usage);
       append("clear", {});
@@ -1024,12 +1060,12 @@ export async function startWebServer(options = {}) {
 
     if (req.method === "GET" && path === "/api/sessions") {
       if (!authOk(req)) return sendError(res, 401, "Unauthorized");
-      return sendJSON(res, 200, await listSessions({ cwd: workspace.root, limit: 30 }));
+      return sendJSON(res, 200, await accessibleSessions());
     }
 
     if (req.method === "GET" && path === "/api/sessions/latest") {
       if (!authOk(req)) return sendError(res, 401, "Unauthorized");
-      return sendJSON(res, 200, (await latestSession(workspace.root)) || null);
+      return sendJSON(res, 200, (await latestAccessibleSession()) || null);
     }
 
     if (req.method === "POST" && path === "/api/sessions/load") {
@@ -1037,9 +1073,10 @@ export async function startWebServer(options = {}) {
       const body = await readJSONBody(req);
       if (jobs.running || jobs.queuedCount) return sendError(res, 409, "Esperá a que termine la tarea para retomar otra sesión.");
       if (body.id != null && (typeof body.id !== "string" || !/^[A-Za-z0-9_-]+$/.test(body.id))) return sendError(res, 400, "ID de sesión inválido.");
-      const data = body.id ? await loadSession(body.id) : await latestSession(workspace.root);
-      if (!data || resolve(data.cwd) !== workspace.root) return sendError(res, 404, "Session not found");
+      const data = body.id ? await loadSession(body.id) : await latestAccessibleSession();
+      if (!sessionAccessible(data)) return sendError(res, 404, "Session not found");
       await session.flush();
+      await activateSessionWorkspace(data);
       applySession(data);
       return sendJSON(res, 200, { ok: true });
     }
@@ -1049,7 +1086,7 @@ export async function startWebServer(options = {}) {
       const body = await readJSONBody(req);
       if (typeof body.id !== "string" || !/^[A-Za-z0-9_-]+$/.test(body.id)) return sendError(res, 400, "ID de sesión inválido.");
       const data = await loadSession(body.id);
-      if (!data || resolve(data.cwd) !== workspace.root) return sendError(res, 404, "Session not found");
+      if (!sessionAccessible(data)) return sendError(res, 404, "Session not found");
       if (body.id === session.id) return sendError(res, 409, "No se puede eliminar la sesión activa.");
       const ok = await deleteSession(body.id);
       return sendJSON(res, 200, { ok });

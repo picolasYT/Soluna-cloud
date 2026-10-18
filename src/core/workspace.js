@@ -83,6 +83,14 @@ export class Workspace {
     return [...this.allowed];
   }
 
+  /** Switch projects without retaining access to previous chat directories. */
+  resetRoot(root, { allow = [] } = {}) {
+    this.root = resolve(root);
+    this.allowed = [this.root, ...allow.map((dir) => resolve(dir))];
+    this._realRoots.clear();
+    return this.root;
+  }
+
   /** Add another permitted root at runtime. */
   allowDirectory(dir) {
     const abs = resolve(dir);
