@@ -2,6 +2,18 @@ import { parseSSE, createStreamAccumulator, assertProviderResponse, assertVisibl
 
 const keyCursors = new Map();
 
+function httpError(response, detail, label) {
+  const error = new Error(`${label} API error ${response.status}: ${detail.slice(0, 300)}`);
+  error.status = response.status;
+  const header = response.headers.get("retry-after");
+  if (header) {
+    const seconds = Number(header);
+    const delay = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(header) - Date.now();
+    if (Number.isFinite(delay) && delay > 0) error.retryAfterMs = delay;
+  }
+  return error;
+}
+
 /**
  * Generic provider for any OpenAI-compatible chat-completions endpoint.
  *
@@ -74,7 +86,7 @@ export class OpenAICompatibleProvider {
 
   async #fail(response) {
     const detail = await response.text().catch(() => "");
-    throw new Error(`${this.label} API error ${response.status}: ${detail.slice(0, 300)}`);
+    throw httpError(response, detail, this.label);
   }
 
   async #request(body, signal, path = "/chat/completions", method = "POST") {
@@ -90,7 +102,7 @@ export class OpenAICompatibleProvider {
       });
       if (response.ok) return response;
       const detail = await response.text().catch(() => "");
-      lastError = new Error(`${this.label} API error ${response.status}: ${detail.slice(0, 300)}`);
+      lastError = httpError(response, detail, this.label);
       const isOpenRouterQuota = this.id === "openrouter" && [402, 429].includes(response.status);
       if (!isOpenRouterQuota) throw lastError;
       if (tried + 1 >= count) {

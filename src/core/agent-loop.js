@@ -36,6 +36,7 @@ export async function runAgentLoop(options) {
     onToolPrepare,
     onToolCall,
     onToolResult,
+    onCheckpoint,
     onUsage,
     onCompaction,
     onRetry,
@@ -367,6 +368,7 @@ export async function runAgentLoop(options) {
         });
       }
     }
+    onCheckpoint?.({ messages: [...conversation], summary: previousSummary });
   }
 
   return { messages: conversation, iterations, summary: previousSummary };

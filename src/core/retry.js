@@ -55,6 +55,8 @@ export function isRetryable(error) {
   if (!msg) return false;
   // Aborting is a deliberate user action: never retry it.
   if (error?.name === "AbortError" || /\baborted\b/i.test(msg)) return false;
+  if (/free-models-per-day|openrouter_free_tier_daily|daily quota.*exhausted/i.test(msg)) return false;
+  if (error?.status === 429) return true;
   if (FATAL_PATTERNS.some((re) => re.test(msg))) return false;
   return RETRYABLE_PATTERNS.some((re) => re.test(msg));
 }
@@ -63,6 +65,11 @@ export function isRetryable(error) {
 export function backoffDelay(attempt) {
   const exp = Math.min(BASE_DELAY_MS * 2 ** (attempt - 1), MAX_DELAY_MS);
   return Math.round(exp * (0.7 + Math.random() * 0.6));
+}
+
+export function retryDelay(error, attempt) {
+  const rateLimited = error?.status === 429 || /\b429\b|rate.?limit/i.test(String(error?.message || ""));
+  return Math.max(backoffDelay(attempt), rateLimited ? 10000 * attempt : 0, Number(error?.retryAfterMs) || 0);
 }
 
 /**
@@ -99,7 +106,7 @@ export async function withRetry(fn, options = {}) {
       const isLast = attempt === attempts;
       if (isLast || !shouldRetry(err) || signal?.aborted) throw err;
 
-      const delay = backoffDelay(attempt);
+      const delay = retryDelay(err, attempt);
       onRetry?.({ attempt, attempts, delay, error: err });
 
       await sleep(delay, signal);

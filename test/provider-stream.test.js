@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { parseSSE, createStreamAccumulator } from "../src/providers/stream-utils.js";
 import { OpenAICompatibleProvider } from "../src/providers/openai-compatible.js";
-import { isRetryable } from "../src/core/retry.js";
+import { isRetryable, retryDelay } from "../src/core/retry.js";
 
 const chunk = (content, finish_reason = "stop") => ({ choices: [{ delta: { content }, finish_reason }] });
 const sse = (data) => new Response(`data: ${JSON.stringify(data)}\n\ndata: [DONE]\n\n`, { headers: { "Content-Type": "text/event-stream" } });
@@ -13,6 +13,19 @@ function mockFetch(t, handler) {
   t.after(() => { globalThis.fetch = previous; });
 }
 const provider = () => new OpenAICompatibleProvider({ id: "openrouter", label: "OpenRouter", baseUrl: "https://example.test/v1", apiKey: "test-key", requiresKey: true });
+
+test("provider rate limits retain Retry-After and receive meaningful backoff", async (t) => {
+  mockFetch(t, async () => new Response(JSON.stringify({ error: { message: "Provider temporarily rate-limited" } }), { status: 429, headers: { "Retry-After": "45" } }));
+  await assert.rejects(provider().stream({ messages: [] }), (error) => {
+    assert.equal(error.status, 429);
+    assert.equal(error.retryAfterMs, 45000);
+    assert.equal(retryDelay(error, 1), 45000);
+    assert.equal(isRetryable(error), true);
+    return true;
+  });
+  assert.ok(retryDelay(new Error("API error 429"), 1) >= 10000);
+  assert.equal(isRetryable(new Error("429 free-models-per-day quota exhausted")), false);
+});
 
 test("SSE parser preserves the final event without a newline and split UTF-8", async () => {
   const bytes = new TextEncoder().encode(`: comment\r\ndata: ${JSON.stringify(chunk("¡Hola! 👋"))}`);

@@ -9,7 +9,7 @@ import { setTimeout as delay } from "node:timers/promises";
 const root = await mkdtemp(join(tmpdir(), "soluna-permission-"));
 process.env.SOLUNA_HOME = join(root, "config");
 const { startWebServer } = await import("../src/web/server.js");
-const { saveCustomProvider } = await import("../src/core/session-store.js");
+const { saveCustomProvider, loadConfig } = await import("../src/core/session-store.js");
 
 test("browser approvals gate actual commands, survive reconnects and cancel cleanly", async (t) => {
   let tool = null;
@@ -89,5 +89,31 @@ test("browser approvals gate actual commands, survive reconnects and cancel clea
     const finished = await state();
     assert.equal(finished.busy, false);
     assert.equal(finished.askRequest, null);
+  });
+
+  await t.test("autoapproval is authenticated, persisted and can release a pending command", async () => {
+    assert.equal((await state()).autoApprove, false);
+    assert.equal((await fetch(`${base}/api/settings/auto-approve`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: true }) })).status, 401);
+    assert.equal((await post("/api/settings/auto-approve", { enabled: "true" })).status, 400);
+    tool = { command: "printf automatic > auto.txt", permission: "ask" };
+    await post("/api/message", { text: "Activar mientras espera" });
+    await pending();
+    assert.equal((await post("/api/settings/auto-approve", { enabled: true })).status, 200);
+    await instance.jobs.waitIdle();
+    assert.equal(await readFile(join(root, "auto.txt"), "utf8"), "automatic");
+    assert.equal((await loadConfig()).webAutoApprove, true);
+    assert.equal((await state()).autoApprove, true);
+    tool = { command: "printf next > auto-next.txt", permission: "ask" };
+    await post("/api/message", { text: "Sin preguntar" });
+    await instance.jobs.waitIdle();
+    assert.equal(await readFile(join(root, "auto-next.txt"), "utf8"), "next");
+    assert.equal((await post("/api/settings/auto-approve", { enabled: false })).status, 200);
+    assert.equal((await loadConfig()).webAutoApprove, false);
+    tool = { command: "printf manual > manual.txt", permission: "ask" };
+    await post("/api/message", { text: "Volver a preguntar" });
+    const waiting = await pending();
+    await post("/api/ask", answer(waiting.askRequest, "Rechazar"));
+    await instance.jobs.waitIdle();
+    await assert.rejects(access(join(root, "manual.txt")));
   });
 });

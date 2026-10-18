@@ -94,7 +94,7 @@ function handleEvent(ev) {
     case "error":
       addErrorLine(ev.text);
       if (ev.retryable && pendingMessage && !$("#composer-input").value.trim()) {
-        $("#composer-input").value = pendingMessage;
+        $("#composer-input").value = ev.resume ? "Continuá la tarea pendiente desde los archivos y el avance que ya guardaste." : pendingMessage;
         $("#composer-input").dispatchEvent(new Event("input"));
       }
       break;

@@ -26,6 +26,13 @@ body[data-theme="light"] .settings-search{background:#fff}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 
 /* Project files: inline preview, download and phone-sized browsing. */
+.transcript{min-width:0;overflow-x:hidden}.transcript>*{flex-shrink:0}
+.line-system,.line-error{min-width:0;white-space:normal;overflow-wrap:anywhere;word-break:break-word;border-radius:16px;line-height:1.6}
+.tool-card{min-width:0;flex-shrink:0}.tool-card-head{min-width:0}.tool-label{min-width:0}
+.auto-approve-setting{margin:0 0 18px;padding:13px;border:1px solid var(--border-hi);border-radius:12px;background:rgba(185,166,255,.04)}
+.auto-approve-setting label{display:flex;justify-content:space-between;align-items:center;gap:14px;cursor:pointer}.auto-approve-setting label span{display:flex;flex-direction:column;gap:5px}.auto-approve-setting strong{font-size:12px}.auto-approve-setting small{font-size:10px;color:var(--muted)}.auto-approve-setting input{width:20px;height:20px;accent-color:var(--violet);flex-shrink:0}
+.session-item:disabled,.new-session:disabled{opacity:.45;cursor:wait;transform:none}
+@media(max-width:760px){.tool-diff,.tool-output{max-height:280px}.line-system,.line-error{max-width:100%;font-size:11px}.tool-card-head{flex-wrap:wrap}.tool-label{flex:1}}
 .files-open{display:flex;align-items:center;gap:7px;white-space:nowrap}
 .files-open span{display:grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:6px;background:rgba(185,166,255,.12);color:#c9baff;font:9px var(--mono)}
 .files-overlay{z-index:12}

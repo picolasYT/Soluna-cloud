@@ -106,6 +106,8 @@ export async function startWebServer(options = {}) {
   const workspace = new Workspace(cleanWorkspace ? await createChatWorkspace() : cwd, { allow: addDir, unsafe });
 
   const config = await loadConfig();
+  let autoApprove = config.webAutoApprove === true;
+  let runHasProgress = false;
   const catalog = buildCatalog(config);
   let providerId = initialProvider || config.provider || null;
   let model = initialModel || config.model || getDefaultModel(providerId, catalog);
@@ -117,10 +119,20 @@ export async function startWebServer(options = {}) {
   const jobs = new Jobs();
   jobs.on("idle", () => broadcastState());
   jobs.on("failed", ({ error }) => {
-    if (/\b503\b/.test(error) && /overload|temporarily|upstream|provider/i.test(error)) {
+    if (/\b429\b/.test(error)) {
+      const daily = /free-models-per-day|openrouter_free_tier_daily|daily quota/i.test(error);
+      append("error", {
+        text: (daily ? "Se agotó la cuota diaria gratuita de OpenRouter. Esperá al reinicio de la cuota o elegí un modelo de pago."
+          : "El proveedor limitó temporalmente este modelo. Esperá un poco o elegí otro modelo para continuar.")
+          + (runHasProgress ? " Los archivos y el avance de la tarea quedaron guardados." : ""),
+        retryable: true,
+        resume: runHasProgress,
+      });
+    } else if (/\b503\b/.test(error) && /overload|temporarily|upstream|provider/i.test(error)) {
       append("error", {
         text: "El modelo seleccionado está saturado temporalmente. Elegí otro modelo en la barra superior o reenviá tu mensaje dentro de unos minutos.",
         retryable: true,
+        resume: runHasProgress,
       });
     } else if (/\b(aborted|abortada|cancelled|canceled)\b/i.test(error)) {
       pushError("La solicitud fue cancelada.");
@@ -164,9 +176,10 @@ export async function startWebServer(options = {}) {
   /* ------------------------------ tools --------------------------------- */
 
   const confirm = async ({ command, reason }) => {
-    if (unsafe) return true;
+    if (unsafe || autoApprove) return true;
     const answers = await uiBridge.ask({
       signal: activeController?.signal,
+      purpose: "command-permission",
       questions: [{
         header: "Permitir acción",
         question: `Soluna necesita tu permiso para ejecutar este comando:\n\n${command}\n\nMotivo: ${reason}`,
@@ -239,6 +252,7 @@ export async function startWebServer(options = {}) {
   function currentState() {
     return {
       provider: providerId,
+      autoApprove,
       model,
       cwd: workspace.root,
       skills: skills.length,
@@ -305,6 +319,7 @@ export async function startWebServer(options = {}) {
 
   /** Run a conversation turn. Returns the updated message list. */
   async function runTurn(text) {
+    runHasProgress = false;
     const userMessage = { role: "user", content: text };
     session.messages.push(userMessage);
 
@@ -369,6 +384,12 @@ export async function startWebServer(options = {}) {
         }
         pushToolResult(entry);
       },
+      onCheckpoint: ({ messages, summary }) => {
+        session.messages = messages.filter((message) => message.role !== "system");
+        session.summary = summary || session.summary;
+        runHasProgress = true;
+        session.scheduleSave();
+      },
       onUsage: (u) => {
         const input = u.prompt_tokens ?? u.input_tokens ?? 0;
         const output = u.completion_tokens ?? u.output_tokens ?? 0;
@@ -392,7 +413,7 @@ export async function startWebServer(options = {}) {
       onRetryResolved: () => append("retry-end"),
       onRetry: ({ attempt, attempts, delay, error }) => {
         append("retry", {
-          message: `El proveedor no pudo completar la respuesta: ${String(error.message).slice(0, 180)}. Reintentando ${attempt}/${attempts - 1} en ${Math.round(delay / 100) / 10}s…`,
+          message: `El proveedor está ${/\b429\b/.test(error.message) ? "limitando las solicitudes" : "temporalmente ocupado"}. Reintento ${attempt}/${attempts - 1} en ${Math.ceil(delay / 1000)}s…`,
         });
       },
       });
@@ -406,6 +427,7 @@ export async function startWebServer(options = {}) {
       // A failed generation must not leave an unanswered user message in the
       // model context; otherwise retrying would send the prompt twice.
       if (session.messages.at(-1) === userMessage) session.messages.pop();
+      if (runHasProgress) await session.flush();
       throw error;
     } finally {
       append("retry-end");
@@ -699,6 +721,7 @@ export async function startWebServer(options = {}) {
         models: p.models,
       })),
       current: { provider: providerId, model },
+      autoApprove,
       apiKeys: Object.keys(configNow.apiKeys || {}),
     };
   }
@@ -902,6 +925,19 @@ export async function startWebServer(options = {}) {
     if (req.method === "GET" && path === "/api/config") {
       if (!authOk(req)) return sendError(res, 401, "Unauthorized");
       return sendJSON(res, 200, await getCatalogInfo());
+    }
+
+    if (req.method === "POST" && path === "/api/settings/auto-approve") {
+      if (!authOk(req)) return sendError(res, 401, "Unauthorized");
+      const body = await readJSONBody(req);
+      if (typeof body.enabled !== "boolean") return sendError(res, 400, "La opción debe ser verdadera o falsa.");
+      await saveConfig({ webAutoApprove: body.enabled });
+      autoApprove = body.enabled;
+      if (autoApprove && askRequest?.purpose === "command-permission") {
+        finishAsk([{ answers: ["Permitir una vez"] }]);
+      }
+      broadcastState();
+      return sendJSON(res, 200, { autoApprove });
     }
 
     if (req.method === "GET" && path === "/api/models") {

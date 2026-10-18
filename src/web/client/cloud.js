@@ -7,6 +7,7 @@ let catalog = [];
 let configLoaded = false;
 const providerModels = new Map();
 let modelsRequestId = 0;
+let agentBusy = false;
 
 async function request(path, options) {
   const response = await api(path, options);
@@ -96,6 +97,7 @@ function fillProviders(select, selected, disableUnready = false) {
 async function loadConfig() {
   try {
     const data = await request("/api/config");
+    $("#settings-auto-approve").checked = data.autoApprove === true;
     catalog = data.providers || [];
     fillProviders(providerSelect, data.current?.provider, true);
     fillProviders(settingsProvider, data.current?.provider);
@@ -122,6 +124,7 @@ async function loadSessions() {
       const button = document.createElement("button");
       button.className = "session-item";
       button.type = "button";
+      button.disabled = agentBusy;
       button.title = session.title || "Conversación";
       const title = document.createElement("span");
       title.className = "session-title";
@@ -134,6 +137,7 @@ async function loadSessions() {
       icon.textContent = "◌";
       button.append(icon, title, stamp);
       button.addEventListener("click", async () => {
+        if (agentBusy) return;
         try {
           await request("/api/sessions/load", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: session.id }) });
           document.querySelectorAll(".session-item").forEach((item) => item.classList.remove("active"));
@@ -237,6 +241,18 @@ modelSelect.addEventListener("change", () => selectModel(modelSelect.value));
 $("#model-search").addEventListener("input", () => renderModelSearch(settingsProvider.value));
 $("#settings-model").addEventListener("change", () => selectModel($("#settings-model").value));
 $("#settings-open").addEventListener("click", openSettings);
+$("#settings-auto-approve").addEventListener("change", async (event) => {
+  const toggle = event.target;
+  const enabled = toggle.checked;
+  toggle.disabled = true;
+  try {
+    await request("/api/settings/auto-approve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled }) });
+    $("#auto-approve-note").textContent = enabled ? "Activo: Soluna autoriza los comandos automáticamente." : "Desactivado: los comandos que requieren permiso te preguntarán antes de ejecutarse.";
+  } catch (error) {
+    toggle.checked = !enabled;
+    $("#auto-approve-note").textContent = error.message;
+  } finally { toggle.disabled = false; }
+});
 $("#settings-close").addEventListener("click", () => $("#settings-overlay").classList.remove("show"));
 $("#settings-overlay").addEventListener("click", (event) => {
   if (event.target === $("#settings-overlay")) $("#settings-overlay").classList.remove("show");
@@ -256,6 +272,7 @@ $("#settings-save-key").addEventListener("click", async () => {
   } catch (error) { $("#settings-note").textContent = error.message; }
 });
 $("#btn-new").addEventListener("click", async () => {
+  if (agentBusy) return;
   try {
     await request("/api/sessions/new", { method: "POST" });
     $("#topbar-title").textContent = "Nueva tarea";
@@ -286,6 +303,12 @@ $("#session-export").addEventListener("click", async () => {
 });
 window.addEventListener("soluna-state", (event) => {
   const state = event.detail;
+  const wasBusy = agentBusy;
+  agentBusy = Boolean(state.busy || state.queued);
+  $("#btn-new").disabled = agentBusy;
+  document.querySelectorAll(".session-item").forEach((button) => { button.disabled = agentBusy; });
+  if (typeof state.autoApprove === "boolean") $("#settings-auto-approve").checked = state.autoApprove;
+  if (wasBusy && !agentBusy) loadSessions();
   if (state.provider && (providerSelect.value !== state.provider || modelSelect.value !== state.model)) {
     providerSelect.value = state.provider;
     settingsProvider.value = state.provider;
