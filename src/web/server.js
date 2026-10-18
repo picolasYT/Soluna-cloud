@@ -46,6 +46,7 @@ import { uiBridge } from "../core/ui-bridge.js";
 import { indexHtml, loginHtml, newRunId, clientBase } from "./events.js";
 import { Jobs } from "./jobs.js";
 import { fetchOpenRouterModels } from "./openrouter-models.js";
+import { createZip } from "./zip.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -471,8 +472,8 @@ export async function startWebServer(options = {}) {
     }
   }
 
-  async function resolveWorkspaceFile(pathname) {
-    const root = await realpath(workspace.root);
+  async function resolveWorkspaceFile(pathname, directory = workspace.root) {
+    const root = await realpath(directory);
     const requested = resolve(root, String(pathname || ""));
     if (requested === root || !requested.startsWith(root + sep)) throw new Error("La ruta del archivo no es válida.");
     const actual = await realpath(requested);
@@ -482,16 +483,20 @@ export async function startWebServer(options = {}) {
     return { actual, info, path: relative(root, actual).split(sep).join("/") };
   }
 
-  async function listWorkspaceFiles() {
-    const root = await realpath(workspace.root);
+  async function listWorkspaceFiles({ directory = workspace.root, limit = 600, archive = false } = {}) {
+    const root = await realpath(directory);
     const files = [];
-    const ignored = new Set([".git", "node_modules", ".soluna", ".next", "dist", "build", "coverage"]);
+    const ignored = new Set([".git", "node_modules", ".soluna"]);
     async function walk(directory, depth = 0) {
-      if (depth > 12 || files.length >= 600) return;
+      if (depth > (archive ? 100 : 12)) {
+        if (archive) throw new Error("Hay demasiados niveles de carpetas para exportar.");
+        return;
+      }
+      if (files.length >= limit) return;
       let entries;
-      try { entries = await readdir(directory, { withFileTypes: true }); } catch { return; }
+      try { entries = await readdir(directory, { withFileTypes: true }); } catch (error) { if (archive) throw error; return; }
       for (const entry of entries) {
-        if (files.length >= 600) break;
+        if (files.length >= limit) break;
         if (entry.name.startsWith(".") && [".git", ".soluna"].includes(entry.name)) continue;
         const absolute = join(directory, entry.name);
         if (entry.isDirectory()) {
@@ -501,12 +506,12 @@ export async function startWebServer(options = {}) {
             const info = await statP(absolute);
             const path = relative(root, absolute).split(sep).join("/");
             files.push({ path, name: entry.name, size: info.size, modified: info.mtime.toISOString(), type: extname(entry.name).slice(1).toLowerCase() || "archivo" });
-          } catch {}
+          } catch (error) { if (archive) throw error; }
         }
       }
     }
     await walk(root);
-    return files.sort((a, b) => a.path.localeCompare(b.path)).slice(0, 600);
+    return files.sort((a, b) => a.path.localeCompare(b.path)).slice(0, limit);
   }
 
   /* ------------------------------ actions ------------------------------- */
@@ -898,6 +903,36 @@ export async function startWebServer(options = {}) {
       if (!authOk(req)) return sendError(res, 401, "Unauthorized");
       const files = await listWorkspaceFiles();
       return sendJSON(res, 200, { files, truncated: files.length >= 600 });
+    }
+
+    if (req.method === "GET" && path === "/api/files/zip") {
+      if (!authOk(req)) return sendError(res, 401, "Unauthorized");
+      const directory = workspace.root;
+      const id = session.id;
+      const files = await listWorkspaceFiles({ directory, limit: 10001, archive: true });
+      if (!files.length) return sendError(res, 400, "Todavía no hay archivos para descargar.");
+      if (files.length > 10000) return sendError(res, 413, "La tarea supera el límite de 10.000 archivos por ZIP.");
+      const limit = 50 * 1024 * 1024;
+      if (files.reduce((sum, file) => sum + file.size, 0) > limit) return sendError(res, 413, "Los archivos superan el límite de 50 MB por ZIP.");
+      const entries = [];
+      let bytes = 0;
+      for (const item of files) {
+        const file = await resolveWorkspaceFile(item.path, directory);
+        if (bytes + file.info.size > limit) return sendError(res, 413, "Los archivos superan el límite de 50 MB por ZIP.");
+        const data = await readFile(file.actual);
+        bytes += data.length;
+        if (bytes > limit) return sendError(res, 413, "Los archivos superan el límite de 50 MB por ZIP.");
+        entries.push({ path: item.path, data });
+      }
+      const zip = await createZip(entries);
+      res.writeHead(200, {
+        "Content-Type": "application/zip",
+        "Content-Disposition": `attachment; filename="soluna-tarea-${id}.zip"`,
+        "Content-Length": zip.length,
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+      });
+      return res.end(zip);
     }
 
     if (req.method === "GET" && path === "/api/file") {

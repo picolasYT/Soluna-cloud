@@ -23,6 +23,7 @@ test("clean chats isolate files, restore their own folder and survive a server r
   const first = await get("/api/sessions/export");
   assert.notEqual(first.cwd, app);
   assert.deepEqual((await get("/api/files")).files, []);
+  assert.equal((await fetch(base + "/api/files/zip")).status, 400);
   await writeFile(join(first.cwd, "gatos.html"), "<h1>Gatos</h1>");
   assert.equal((await get("/api/files")).files[0].path, "gatos.html");
 

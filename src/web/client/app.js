@@ -192,6 +192,7 @@ function bindSidebar() {
 
 let projectFiles = [];
 let activePreviewPath = "";
+let zipDownloading = false;
 
 function bindFiles() {
   const overlay = $("#files-overlay");
@@ -205,6 +206,7 @@ function bindFiles() {
   $("#files-close").addEventListener("click", close);
   overlay.addEventListener("click", (event) => { if (event.target === overlay) close(); });
   $("#files-refresh").addEventListener("click", loadProjectFiles);
+  $("#files-download-all").addEventListener("click", downloadAllFiles);
   $("#files-search").addEventListener("input", renderProjectFiles);
   document.addEventListener("keydown", (event) => { if (event.key === "Escape" && overlay.classList.contains("show")) close(); });
   loadProjectFiles();
@@ -212,17 +214,48 @@ function bindFiles() {
 
 async function loadProjectFiles() {
   const list = $("#files-list");
+  $("#files-download-all").disabled = true;
   list.innerHTML = '<div class="files-loading"><span class="spinner"></span> Cargando archivos…</div>';
   try {
     const response = await apiFetch("/api/files");
     const result = await response.json();
     projectFiles = result.files || [];
+    $("#files-download-all").disabled = zipDownloading || projectFiles.length === 0;
     $("#files-count").textContent = projectFiles.length;
     renderProjectFiles();
     if (activePreviewPath && projectFiles.some((file) => file.path === activePreviewPath)) previewProjectFile(activePreviewPath);
     if (result.truncated) list.insertAdjacentHTML("beforeend", '<div class="files-note">Se muestran los primeros 600 archivos.</div>');
   } catch (error) {
     list.textContent = error.message;
+  }
+}
+
+async function downloadAllFiles() {
+  if (zipDownloading) return;
+  const button = $("#files-download-all");
+  const note = $("#files-zip-note");
+  zipDownloading = true;
+  button.disabled = true;
+  button.textContent = "Preparando ZIP…";
+  note.textContent = "Reuniendo los archivos de esta tarea…";
+  try {
+    const response = await apiFetch("/api/files/zip");
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = response.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] || "soluna-tarea.zip";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    note.textContent = "ZIP preparado. La descarga se envió al navegador.";
+  } catch (error) {
+    note.textContent = error.message;
+  } finally {
+    zipDownloading = false;
+    button.disabled = projectFiles.length === 0;
+    button.textContent = "Descargar todo en ZIP ↓";
   }
 }
 
