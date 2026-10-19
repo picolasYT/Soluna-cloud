@@ -8,6 +8,7 @@ let configLoaded = false;
 const providerModels = new Map();
 let modelsRequestId = 0;
 let agentBusy = false;
+let keysRequestId = 0;
 
 async function request(path, options) {
   const response = await api(path, options);
@@ -101,6 +102,7 @@ async function loadConfig() {
     catalog = data.providers || [];
     fillProviders(providerSelect, data.current?.provider, true);
     fillProviders(settingsProvider, data.current?.provider);
+    loadProviderKeys(settingsProvider.value);
     fillModels(modelSelect, data.current?.provider, data.current?.model);
     renderModelSearch(data.current?.provider);
     if (data.current?.provider === "openrouter") loadProviderModels("openrouter", data.current?.model);
@@ -224,10 +226,63 @@ function openSettings() {
   $("#settings-overlay").classList.add("show");
   if (!configLoaded) loadConfig();
   else renderModelSearch(settingsProvider.value);
+  loadProviderKeys(settingsProvider.value);
+}
+
+async function loadProviderKeys(provider) {
+  const requestId = ++keysRequestId;
+  const list = $("#provider-keys");
+  list.replaceChildren();
+  $("#provider-keys-count").textContent = provider ? "Cargando claves…" : "Elegí un proveedor";
+  if (!provider) return;
+  try {
+    const data = await request(`/api/keys?provider=${encodeURIComponent(provider)}`);
+    if (requestId !== keysRequestId || settingsProvider.value !== provider) return;
+    $("#provider-keys-count").textContent = `${data.count} ${data.count === 1 ? "clave disponible" : "claves disponibles"}${data.environmentKey ? " · incluye clave del servidor" : ""}`;
+    if (!data.keys.length) {
+      const empty = document.createElement("small");
+      empty.textContent = "Todavía no hay claves guardadas para este proveedor.";
+      list.appendChild(empty);
+    }
+    for (const key of data.keys) {
+      const row = document.createElement("div");
+      row.className = "provider-key-row";
+      const label = document.createElement("span");
+      label.textContent = `${key.label} · ${key.masked}`;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "btn btn-ghost";
+      remove.textContent = "Quitar";
+      remove.setAttribute("aria-label", `Quitar ${key.label}`);
+      remove.addEventListener("click", async () => {
+        remove.disabled = true;
+        try {
+          await request("/api/keys", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider, id: key.id }) });
+          const selected = settingsProvider.value;
+          await loadConfig();
+          settingsProvider.value = selected;
+          await loadProviderKeys(selected);
+          $("#settings-note").textContent = "Clave quitada. Los cambios se usan en la próxima tarea o mensaje.";
+        } catch (error) {
+          $("#settings-note").textContent = error.message;
+          remove.disabled = false;
+        }
+      });
+      row.append(label, remove);
+      list.appendChild(row);
+    }
+    $("#provider-keys-note").textContent = provider === "openrouter"
+      ? "Soluna prueba otra clave si una falla o alcanza su límite. Varias claves de la misma cuenta comparten la cuota de OpenRouter."
+      : "Soluna prueba otra clave si una es inválida, se queda sin saldo o alcanza su límite. Las claves del servidor se administran desde sus variables de entorno.";
+  } catch (error) {
+    if (requestId === keysRequestId) $("#provider-keys-count").textContent = error.message;
+  }
 }
 
 providerSelect.addEventListener("change", () => selectProvider(providerSelect.value));
 settingsProvider.addEventListener("change", () => {
+  $("#settings-key").value = "";
+  loadProviderKeys(settingsProvider.value);
   const item = catalog.find((entry) => entry.id === settingsProvider.value);
   if (item?.ready || !item?.requiresKey) {
     providerSelect.value = settingsProvider.value;
@@ -261,15 +316,19 @@ $("#settings-save-key").addEventListener("click", async () => {
   const provider = settingsProvider.value;
   const key = $("#settings-key").value.trim();
   if (!provider || !key) { $("#settings-note").textContent = "Elegí un proveedor y pegá una clave."; return; }
+  const button = $("#settings-save-key");
+  button.disabled = true;
   try {
-    await request("/api/save-key", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider, key }) });
+    await request("/api/keys", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider, keys: [key] }) });
     $("#settings-key").value = "";
-    $("#settings-note").textContent = "Clave guardada en este espacio.";
+    $("#settings-note").textContent = "Clave agregada. Las anteriores siguen guardadas.";
     providerModels.delete(provider);
     await loadConfig();
-    providerSelect.value = provider;
-    await selectProvider(provider);
+    if (providerSelect.value !== provider) await selectProvider(provider);
+    else settingsProvider.value = provider;
+    await loadProviderKeys(provider);
   } catch (error) { $("#settings-note").textContent = error.message; }
+  finally { button.disabled = false; }
 });
 $("#btn-new").addEventListener("click", async () => {
   if (agentBusy) return;

@@ -3,7 +3,8 @@ import { AnthropicProvider } from "./anthropic.js";
 import { OpenCodeZenProvider } from "./opencode-zen.js";
 import { OpenAICompatibleProvider } from "./openai-compatible.js";
 import { PROVIDER_CATALOG, getProviderInfo } from "./catalog.js";
-import { resolveApiKey } from "../core/session-store.js";
+import { resolveApiKeys } from "../core/session-store.js";
+import { withKeyFailover } from "./key-failover.js";
 
 export { OpenAIProvider } from "./openai.js";
 export { AnthropicProvider } from "./anthropic.js";
@@ -39,11 +40,12 @@ export function createProvider(name, options = {}) {
   }
 
   // Env var wins over a key saved through the TUI.
-  const key = options.apiKey || resolveApiKey(id, info.envKey, options.config) || undefined;
+  const keys = [...new Set([options.apiKey, ...(options.apiKeys || []), ...resolveApiKeys(id, info.envKey, options.config)].filter(Boolean))];
+  const key = keys[0] || undefined;
   const opts = { ...options, apiKey: key };
 
   const Dedicated = DEDICATED[id];
-  if (Dedicated) return new Dedicated(opts);
+  if (Dedicated) return withKeyFailover(new Dedicated(opts), { id, keys, onKeyRotation: options.onKeyRotation });
 
   return new OpenAICompatibleProvider({
     id: info.id,
@@ -51,8 +53,8 @@ export function createProvider(name, options = {}) {
     baseUrl: opts.baseUrl || info.baseUrl,
     apiKeyEnv: info.envKey,
     apiKey: opts.apiKey,
-    apiKeys: id === "openrouter" ? options.config?.apiKeyPools?.openrouter : undefined,
-    onKeyRotation: id === "openrouter" ? options.onKeyRotation : undefined,
+    apiKeys: keys,
+    onKeyRotation: options.onKeyRotation,
     // Public catalog discovery (notably OpenRouter /models) should work even
     // when the user has not entered a completion key yet.
     requiresKey: options.allowNoKey ? false : info.requiresKey,

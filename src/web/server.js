@@ -1,5 +1,5 @@
 import http from "node:http";
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { stat, createReadStream } from "node:fs";
@@ -25,8 +25,9 @@ import { buildCatalog, getProviderInfo, getDefaultModel, isProviderReady } from 
 import {
   loadConfig,
   saveConfig,
-  saveApiKey,
+  saveApiKeySet,
   resolveApiKey,
+  resolveApiKeys,
   loadMCPServers,
   saveMCPServer,
   removeMCPServer,
@@ -117,6 +118,7 @@ export async function startWebServer(options = {}) {
   const workspacesDir = join(SOLUNA_HOME, "workspaces");
   let openRouterModelCache = null;
   let openRouterModelPending = null;
+  let keyUpdates = Promise.resolve();
   const jobs = new Jobs();
   jobs.on("idle", () => broadcastState());
   jobs.on("failed", ({ error }) => {
@@ -309,7 +311,9 @@ export async function startWebServer(options = {}) {
       );
       return null;
     }
-    return createProvider(id, { model, catalog, config });
+    return createProvider(id, { model, catalog, config, onKeyRotation: ({ nextKey, keyCount }) => {
+      pushSystem(`Cambiando a la clave ${nextKey} de ${keyCount} de ${info.label}.`);
+    } });
   }
 
   /** Push a tool entry into the transcript with the same shape as the TUI. */
@@ -723,6 +727,7 @@ export async function startWebServer(options = {}) {
         requiresKey: p.requiresKey,
         ready: isProviderReady(p.id, catalog, configNow),
         keySource: keySourceOf(p.id, catalog, configNow),
+        keyCount: resolveApiKeys(p.id, p.envKey, configNow).length,
         models: p.models,
       })),
       current: { provider: providerId, model },
@@ -774,16 +779,49 @@ export async function startWebServer(options = {}) {
     if (typeof key !== "string" || !key.trim()) {
       throw Object.assign(new Error("Ingresá una clave API antes de guardarla."), { status: 400 });
     }
-    await saveApiKey(provider, key.trim());
-    if (provider === "openrouter") openRouterModelCache = null;
-    const cfg = await loadConfig();
-    Object.assign(config, cfg);
-    pushSystem(
-      key
-        ? `Saved the API key for ${getProviderInfo(provider, catalog)?.label || provider}.`
-        : `Removed the saved key for ${getProviderInfo(provider, catalog)?.label || provider}.`,
-    );
-    broadcastState();
+    return addProviderKeys(provider, [key]);
+  }
+
+  function savedKeys(provider, cfg) {
+    return [...new Set([cfg.apiKeys?.[provider], ...(cfg.apiKeyPools?.[provider] || [])].filter(Boolean))];
+  }
+
+  function keyId(provider, key) {
+    return createHash("sha256").update(`${provider}\0${key}`).digest("hex");
+  }
+
+  function keyMetadata(provider, cfg) {
+    const info = getProviderInfo(provider, catalog);
+    if (!info) throw Object.assign(new Error("Proveedor desconocido."), { status: 400 });
+    return {
+      provider,
+      keys: savedKeys(provider, cfg).map((key, index) => ({ id: keyId(provider, key), label: `Clave ${index + 1}`, masked: key.length > 8 ? `•••• ${key.slice(-4)}` : "••••" })),
+      environmentKey: Boolean(info.envKey && process.env[info.envKey]),
+      count: resolveApiKeys(provider, info.envKey, cfg).length,
+    };
+  }
+
+  async function mutateProviderKeys(provider, update) {
+    if (!getProviderInfo(provider, catalog)) throw Object.assign(new Error("Proveedor desconocido."), { status: 400 });
+    const operation = keyUpdates.then(async () => {
+      const cfg = await loadConfig();
+      const next = [...new Set(update(savedKeys(provider, cfg)))];
+      if (next.length > 50) throw Object.assign(new Error("Podés guardar hasta 50 claves por proveedor."), { status: 400 });
+      await saveApiKeySet(provider, next);
+      Object.assign(config, await loadConfig());
+      if (provider === "openrouter") { openRouterModelCache = null; openRouterModelPending = null; }
+      broadcastState();
+      return keyMetadata(provider, config);
+    });
+    keyUpdates = operation.catch(() => {});
+    return operation;
+  }
+
+  function addProviderKeys(provider, keys) {
+    if (!Array.isArray(keys) || !keys.length || keys.length > 50 || keys.some((key) => typeof key !== "string" || !key.trim() || key.length > 8192 || /\s/.test(key.trim()))) {
+      throw Object.assign(new Error("Ingresá claves API válidas, sin espacios ni saltos de línea."), { status: 400 });
+    }
+    return mutateProviderKeys(provider, (current) => [...current, ...keys.map((key) => key.trim())]);
   }
 
   /* ------------------------------ HTTP ---------------------------------- */
@@ -1114,6 +1152,28 @@ export async function startWebServer(options = {}) {
       if (jobs.running || jobs.queuedCount) return sendError(res, 409, "Esperá a que termine la tarea para cambiar el modelo.");
       await handleSetModel(body.model);
       return sendJSON(res, 200, { ok: true });
+    }
+
+    if (req.method === "GET" && path === "/api/keys") {
+      if (!authOk(req)) return sendError(res, 401, "Unauthorized");
+      return sendJSON(res, 200, keyMetadata(query.get("provider"), await loadConfig()));
+    }
+
+    if (req.method === "POST" && path === "/api/keys") {
+      if (!authOk(req)) return sendError(res, 401, "Unauthorized");
+      const body = await readJSONBody(req);
+      return sendJSON(res, 200, await addProviderKeys(body.provider, body.keys));
+    }
+
+    if (req.method === "DELETE" && path === "/api/keys") {
+      if (!authOk(req)) return sendError(res, 401, "Unauthorized");
+      const body = await readJSONBody(req);
+      if (typeof body.id !== "string" || !/^[a-f0-9]{64}$/.test(body.id)) return sendError(res, 400, "Identificador de clave inválido.");
+      const result = await mutateProviderKeys(body.provider, (keys) => {
+        if (!keys.some((key) => keyId(body.provider, key) === body.id)) throw Object.assign(new Error("La clave ya no existe."), { status: 404 });
+        return keys.filter((key) => keyId(body.provider, key) !== body.id);
+      });
+      return sendJSON(res, 200, result);
     }
 
     if (req.method === "POST" && path === "/api/save-key") {

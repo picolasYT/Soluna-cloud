@@ -273,7 +273,7 @@ export function isProviderReady(providerId, catalog = PROVIDER_CATALOG, config =
   if (!info) return false;
   if (!info.requiresKey) return true;
   if (info.envKey && process.env[info.envKey]) return true;
-  return Boolean(config?.apiKeys?.[providerId]);
+  return Boolean(config?.apiKeys?.[providerId] || config?.apiKeyPools?.[providerId]?.length);
 }
 
 /** Where a provider's key comes from, for display purposes. */

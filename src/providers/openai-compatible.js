@@ -1,4 +1,5 @@
 import { parseSSE, createStreamAccumulator, assertProviderResponse, assertVisibleResponse, responseText } from "./stream-utils.js";
+import { shouldRotateKey } from "./key-failover.js";
 
 const keyCursors = new Map();
 
@@ -38,9 +39,7 @@ export class OpenAICompatibleProvider {
     this.baseUrl = String(options.baseUrl || "").replace(/\/+$/, "");
     this.apiKeyEnv = options.apiKeyEnv || null;
     this.apiKey = options.apiKey || (this.apiKeyEnv ? process.env[this.apiKeyEnv] : null) || options.apiKeys?.[0] || null;
-    this.apiKeys = this.id === "openrouter"
-      ? [...new Set([this.apiKey, ...(options.apiKeys || [])].filter(Boolean))]
-      : [this.apiKey].filter(Boolean);
+    this.apiKeys = [...new Set([this.apiKey, ...(options.apiKeys || [])].filter(Boolean))];
     const savedCursor = keyCursors.get(this.id) || 0;
     this.keyIndex = this.apiKeys.length ? savedCursor % this.apiKeys.length : 0;
     this.requiresKey = options.requiresKey ?? Boolean(this.apiKeyEnv);
@@ -90,7 +89,7 @@ export class OpenAICompatibleProvider {
   }
 
   async #request(body, signal, path = "/chat/completions", method = "POST") {
-    const count = this.id === "openrouter" && method !== "GET" ? this.apiKeys.length : 1;
+    const count = method !== "GET" ? Math.max(this.apiKeys.length, 1) : 1;
     let lastError;
     for (let tried = 0; tried < count; tried++) {
       const headers = this.#headers();
@@ -103,20 +102,20 @@ export class OpenAICompatibleProvider {
       if (response.ok) return response;
       const detail = await response.text().catch(() => "");
       lastError = httpError(response, detail, this.label);
-      const isOpenRouterQuota = this.id === "openrouter" && [402, 429].includes(response.status);
-      if (!isOpenRouterQuota) throw lastError;
+      if (method === "GET" || !shouldRotateKey(response.status, detail)) throw lastError;
       if (tried + 1 >= count) {
-        if (/free-models-per-day|openrouter_free_tier_daily/i.test(detail)) {
+        if (this.id === "openrouter" && /free-models-per-day|openrouter_free_tier_daily/i.test(detail)) {
           throw new Error(
             `${lastError.message}\nAutomatic key failover tried ${count} configured key(s), but the OpenRouter free-model daily quota is exhausted. This quota is shared by the OpenRouter account: another key from the same account will not add quota. Add credits/use a paid model, wait for reset, or configure keys from different eligible accounts.`,
           );
         }
         throw lastError;
       }
+      const failedKey = this.keyIndex + 1;
       this.keyIndex = (this.keyIndex + 1) % count;
       keyCursors.set(this.id, this.keyIndex);
       this.onKeyRotation?.({
-        failedKey: tried + 1,
+        failedKey,
         nextKey: this.keyIndex + 1,
         keyCount: count,
         status: response.status,

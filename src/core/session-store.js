@@ -131,7 +131,16 @@ export async function loadConfig() {
  */
 export function resolveApiKey(providerId, envKey, config) {
   if (envKey && process.env[envKey]) return process.env[envKey];
-  return config?.apiKeys?.[providerId] || null;
+  return config?.apiKeys?.[providerId] || config?.apiKeyPools?.[providerId]?.[0] || null;
+}
+
+/** Environment key first, followed by saved keys, without duplicates. */
+export function resolveApiKeys(providerId, envKey, config) {
+  return [...new Set([
+    envKey ? process.env[envKey] : null,
+    config?.apiKeys?.[providerId],
+    ...(config?.apiKeyPools?.[providerId] || []),
+  ].filter((key) => typeof key === "string" && key.trim()).map((key) => key.trim()))];
 }
 
 /** Save an API key for a provider. Pass null to remove it. */
