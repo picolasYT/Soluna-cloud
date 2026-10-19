@@ -95,6 +95,8 @@ export async function startWebServer(options = {}) {
     token = null,
     modelFetch = fetch,
     cleanWorkspace = false,
+    restrictedUser = false,
+    persistKeys = null,
   } = options;
 
   // Real context limits (local cache, network optional).
@@ -201,7 +203,7 @@ export async function startWebServer(options = {}) {
     createReadTool(workspace),
     createWriteTool(workspace),
     createEditTool(workspace),
-    createBashTool(workspace, { confirm }),
+    ...(!restrictedUser ? [createBashTool(workspace, { confirm })] : []),
     createLsTool(workspace),
     createGlobTool(workspace),
     createGrepTool(workspace),
@@ -213,7 +215,7 @@ export async function startWebServer(options = {}) {
 
   let mcpStatus = [];
   let mcpErrors = [];
-  if (!noMcp) {
+  if (!noMcp && !restrictedUser) {
     const mcps = await connectMCPServers({ onStatus: (s) => mcpStatus.push(s) });
     tools.push(...(mcps.tools || []));
     mcpErrors = mcps.errors || [];
@@ -733,6 +735,7 @@ export async function startWebServer(options = {}) {
       current: { provider: providerId, model },
       autoApprove,
       apiKeys: Object.keys(configNow.apiKeys || {}),
+      restrictedUser,
     };
   }
 
@@ -807,6 +810,7 @@ export async function startWebServer(options = {}) {
       const cfg = await loadConfig();
       const next = [...new Set(update(savedKeys(provider, cfg)))];
       if (next.length > 50) throw Object.assign(new Error("Podés guardar hasta 50 claves por proveedor."), { status: 400 });
+      if (persistKeys) await persistKeys(provider, next);
       await saveApiKeySet(provider, next);
       Object.assign(config, await loadConfig());
       if (provider === "openrouter") { openRouterModelCache = null; openRouterModelPending = null; }
@@ -987,7 +991,7 @@ export async function startWebServer(options = {}) {
           "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${safeName}"`,
           "Cache-Control": "no-store",
           "X-Content-Type-Options": "nosniff",
-          "Content-Security-Policy": "default-src 'none'; img-src data: https:; style-src 'unsafe-inline' https:; script-src 'unsafe-inline' https:; font-src data: https:; connect-src https:;",
+          "Content-Security-Policy": "sandbox allow-scripts; default-src 'none'; img-src data: https:; style-src 'unsafe-inline' https:; script-src 'unsafe-inline' https:; font-src data: https:; connect-src https:;",
         });
         return res.end(await readFile(file.actual));
       } catch (error) {
@@ -1002,6 +1006,7 @@ export async function startWebServer(options = {}) {
 
     if (req.method === "POST" && path === "/api/settings/auto-approve") {
       if (!authOk(req)) return sendError(res, 401, "Unauthorized");
+      if (restrictedUser) return sendError(res, 403, "Los comandos del servidor están disponibles solo para el administrador.");
       const body = await readJSONBody(req);
       if (typeof body.enabled !== "boolean") return sendError(res, 400, "La opción debe ser verdadera o falsa.");
       await saveConfig({ webAutoApprove: body.enabled });
@@ -1227,7 +1232,7 @@ export async function startWebServer(options = {}) {
   }
 
   async function serveStatic(req, res, pathname) {
-    if (pathname === "/" || pathname === "/index.html") {
+    if (pathname === "/" || pathname === "/index.html" || pathname === "/app") {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" });
       return res.end(indexHtml());
     }

@@ -39,6 +39,10 @@
   },
   "dependencies": {
     "ink": "^5.2.1",
+    "pg": "^8.23.1",
     "react": "^18.3.1"
+  },
+  "devDependencies": {
+    "pg-mem": "^3.0.14"
   }
 }

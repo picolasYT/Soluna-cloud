@@ -111,3 +111,8 @@ It is built to be boring and reliable: a workspace sandbox stops the agent from 
 
 If a page disagrees with what you observe, the code is right and this manual
 is wrong — open an issue on the repository where you obtained this Soluna copy.
+
+## Cuentas en Soluna Cloud
+
+Para usar una bienvenida animada, registro, inicio de sesión y el panel del administrador `picolas` con una base PostgreSQL externa, seguí la [guía de Neon y Render](docs/NEON.md).
+

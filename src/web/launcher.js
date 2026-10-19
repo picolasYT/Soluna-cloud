@@ -7,6 +7,7 @@ import { resolve } from "node:path";
 import { loadConfig } from "../core/session-store.js";
 import { buildCatalog } from "../providers/catalog.js";
 import { startWebServer } from "./server.js";
+import { startAccountsServer } from "./accounts-server.js";
 import { APP_DISPLAY_NAME, APP_VERSION, APP_REPO } from "../config/constants.js";
 import { logger, setDebug } from "../core/logger.js";
 
@@ -110,7 +111,9 @@ export async function runWeb(args = []) {
   const provider = options.provider || config.provider || null;
   const model = options.model || config.model || null;
 
-  const instance = await startWebServer({
+  const instance = process.env.DATABASE_URL
+    ? await startAccountsServer({ host: options.host, port: options.port })
+    : await startWebServer({
     cwd: options.cwd,
     cleanWorkspace: options.cleanWorkspace,
     host: options.host,
@@ -129,13 +132,16 @@ export async function runWeb(args = []) {
   console.log(`
 ${APP_DISPLAY_NAME} v${APP_VERSION} — web UI
   Open:        ${access}
-  Sign-in:     ${options.token ? "access token configured" : "no token required"}
-  Working dir: ${instance.cwd}
+  Sign-in:     ${instance.accounts ? "cuentas de usuario (Neon / PostgreSQL)" : options.token ? "access token configured" : "no token required"}
+  Working dir: ${instance.cwd || "espacio independiente por cuenta"}
   Provider:    ${instance.providerId || "not set (pick one in the UI)"}
   Model:       ${instance.model || "default"}
   Guardrails:  ${options.unsafe ? "OFF (shell commands run without prompting)" : "ON (risky commands need your approval in the browser)"}
   Ctrl-C to stop
 `);
+  const shutdown = () => instance.close().finally(() => process.exit(0));
+  process.once("SIGTERM", shutdown);
+  process.once("SIGINT", shutdown);
 }
 
 /** Used by bin/soluna-web.js to run directly. */

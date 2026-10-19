@@ -19,3 +19,10 @@ services:
         value: /opt/render/project/src/.soluna
       - key: SOLUNA_WEB_TOKEN
         generateValue: true
+      # Neon: copy the pooled PostgreSQL connection string into Render.
+      - key: DATABASE_URL
+        sync: false
+      - key: SOLUNA_ADMIN_PASSWORD
+        sync: false
+      - key: SOLUNA_ENCRYPTION_KEY
+        generateValue: true

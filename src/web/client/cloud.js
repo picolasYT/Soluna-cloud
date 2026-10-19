@@ -99,6 +99,7 @@ async function loadConfig() {
   try {
     const data = await request("/api/config");
     $("#settings-auto-approve").checked = data.autoApprove === true;
+    $(".auto-approve-setting").hidden = data.restrictedUser === true;
     catalog = data.providers || [];
     fillProviders(providerSelect, data.current?.provider, true);
     fillProviders(settingsProvider, data.current?.provider);
