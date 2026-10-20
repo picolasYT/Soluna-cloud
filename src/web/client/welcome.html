@@ -1,11 +1,82 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/><meta name="theme-color" content="#090a10"/><meta name="description" content="Dale forma a tus ideas con Soluna Cloud. Tu agente de programación, archivos y proyectos en un solo lugar."/><title>Soluna Cloud · De una idea a algo real</title><link rel="stylesheet" href="/account.css"/></head>
-<body class="welcome-page">
-<div class="ambient" aria-hidden="true"><i></i><i></i><i></i></div>
-<header class="site-nav"><a href="/" class="account-brand"><span class="moon-mark">☾</span>soluna<span>cloud</span></a><nav aria-label="Principal"><a class="nav-link" href="#posibilidades">Explorar</a><a class="nav-link" id="welcome-admin" href="/admin" hidden>Administrar</a><a class="button small" id="welcome-enter" href="/login">Ingresar ↗</a></nav></header>
-<main>
-<section class="welcome-hero"><div class="hero-copy reveal"><div class="pill"><span class="green-light"></span> UN ESPACIO PARA TUS IDEAS</div><h1>De una idea<br/>a <em>algo real.</em></h1><p>Conversá, creá y dale forma a tu próximo proyecto. Soluna trabaja con vos, desde el primer mensaje hasta el último archivo.</p><div class="hero-actions"><a class="button primary" id="welcome-start" href="/register">Empezar a crear <span>→</span></a><a class="text-link" href="#posibilidades">Conocé Soluna ↓</a></div><div class="hero-caption"><span>✦</span> Tu imaginación. Tu espacio. Tu siguiente paso.</div></div>
-<div class="hero-scene reveal" aria-label="Vista de ejemplo de un proyecto en Soluna"><div class="scene-orbit orbit-a"></div><div class="scene-orbit orbit-b"></div><div class="scene-star star-a">✦</div><div class="scene-star star-b">✧</div><div class="mock-window"><div class="window-bar"><span class="window-dots">● ● ●</span><span>mi-próxima-idea</span><small>VISTA DE EJEMPLO</small></div><div class="mock-message">Hagamos algo increíble.</div><div class="mock-answer"><span class="mini-moon">☾</span><div>Dejame darle forma.<div class="typing-dots"><i></i><i></i><i></i></div></div></div><div class="mock-code"><div><span>01</span> <b>&lt;idea&gt;</b></div><div><span>02</span> &nbsp; imaginación: <em>sin límites</em>;</div><div><span>03</span> &nbsp; siguiente_paso: <em>crear</em>;</div><div><span>04</span> <b>&lt;/idea&gt;</b></div></div><div class="mock-files"><span>⌘ index.html</span><span>✓ Listo para explorar</span></div></div><div class="floating-chip chip-top">✦ Una conversación, mil posibilidades</div><div class="floating-chip chip-bottom"><span class="green-light"></span> De tu idea al navegador</div></div></section>
-<section id="posibilidades" class="possibilities"><div class="section-intro reveal"><span class="eyebrow">DE LA CONVERSACIÓN A LA CREACIÓN</span><h2>Todo empieza con<br/>«¿y si hacemos…?»</h2><p>Un lugar para probar, construir y seguir aprendiendo.</p></div><div class="feature-grid"><article class="feature-card reveal"><span class="feature-icon">✳</span><small>01 / CREÁ</small><h3>Contalo a tu manera.</h3><p>Describí una página, una herramienta o una mejora. Trabajá con el modelo de IA que elijas.</p></article><article class="feature-card reveal"><span class="feature-icon">⌘</span><small>02 / EXPLORÁ</small><h3>Tu proyecto toma forma.</h3><p>Revisá el código, abrí vistas previas y descargá todos los archivos en un ZIP desde el navegador.</p></article><article class="feature-card reveal"><span class="feature-icon">☾</span><small>03 / CONTINUÁ</small><h3>Volvé a tu espacio.</h3><p>Entrá a tu cuenta, retomá tus conversaciones y administrá tus propias claves de IA.</p></article></div></section>
-<section class="closing-card reveal"><div class="closing-moon" aria-hidden="true">☾</div><h2>Tu próxima idea<br/>merece un comienzo.</h2><a class="button primary" id="welcome-bottom" href="/register">Abrir mi espacio →</a></section>
-</main><footer class="site-footer"><a href="/" class="account-brand">soluna<span>cloud</span></a><span>Creado por Picolas · Hecho para construir.</span><a href="/login">Entrar a mi cuenta ↗</a></footer><script type="module" src="/welcome.js"></script></body></html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <meta name="theme-color" content="#0a0a0a"/>
+  <meta name="description" content="Soluna Cloud: tu agente de programación desde el navegador. Conversá, explorá archivos y dale forma a tu próximo proyecto."/>
+  <title>Soluna Cloud · De una idea a algo real</title>
+  <link rel="stylesheet" href="/account.css"/>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230a0a0a'/%3E%3Cpath d='M20 4A12 12 0 1 0 28 25 13 13 0 0 1 20 4Z' fill='%23fafafa'/%3E%3C/svg%3E"/>
+</head>
+<body class="welcome-page" data-visual-style="graphite">
+  <a class="skip-link" href="#contenido">Ir al contenido</a>
+  <div class="announcement"><span>Soluna Cloud</span><span class="announcement-divider" aria-hidden="true">/</span>Tu agente, desde el navegador.<a href="#demo">Ver cómo funciona <span aria-hidden="true">↗</span></a></div>
+  <header class="site-nav">
+    <a href="/" class="account-brand" aria-label="Soluna Cloud, inicio"><span class="moon-mark" aria-hidden="true">☾</span>soluna<span>cloud</span></a>
+    <nav aria-label="Principal">
+      <a class="nav-link nav-explore" href="#posibilidades">Posibilidades</a>
+      <a class="nav-link nav-demo" href="#demo">El espacio de trabajo</a>
+      <a class="nav-link" id="welcome-admin" href="/admin" hidden>Administrar</a>
+      <a class="button small" id="welcome-enter" href="/login">Ingresar <span aria-hidden="true">↗</span></a>
+    </nav>
+  </header>
+  <main id="contenido">
+    <section class="welcome-hero">
+      <div class="hero-copy reveal">
+        <div class="pill"><span class="signal-dot" aria-hidden="true"></span>UN ESPACIO PARA CONSTRUIR</div>
+        <h1>De una idea<br/>a algo real.</h1>
+        <p>Contale a Soluna qué querés crear. Trabajá con tu agente de IA, explorá cada archivo y seguí el proyecto desde tu navegador.</p>
+        <div class="hero-actions"><a class="button primary" id="welcome-start" href="/register">Empezar a crear <span aria-hidden="true">→</span></a><a class="button secondary" href="#demo">Explorar el espacio</a></div>
+        <p class="hero-caption"><span aria-hidden="true">⌘</span> Tu conversación. Tus archivos. Tu próximo paso.</p>
+      </div>
+      <div class="hero-lattice reveal" aria-hidden="true"><svg class="lattice-svg" viewBox="0 0 440 440" fill="none" aria-hidden="true"><defs><linearGradient id="hero-signal" x1="80" y1="220" x2="370" y2="220" gradientUnits="userSpaceOnUse"><stop offset=".15" stop-color="#ffb931"/><stop offset=".30" stop-color="#ffffff"/><stop offset=".40" stop-color="#ffffff"/><stop offset=".50" stop-color="#2e73fc"/></linearGradient></defs><g class="lattice-ghost" stroke="#fafafa" stroke-width="2"><rect x="106" y="106" width="228" height="228" rx="16" transform="rotate(-32 220 220)"/><rect x="116" y="116" width="208" height="208" rx="16" transform="rotate(-14 220 220)"/></g><g stroke="#fafafa" stroke-width="1"><rect x="82" y="82" width="276" height="276" rx="16" transform="rotate(-32 220 220)"/><rect x="104" y="104" width="232" height="232" rx="16" transform="rotate(-14 220 220)"/><rect x="126" y="126" width="188" height="188" rx="16" transform="rotate(4 220 220)"/><rect x="148" y="148" width="144" height="144" rx="12" transform="rotate(22 220 220)"/></g><rect class="lattice-signal" x="104" y="104" width="232" height="232" rx="16" stroke="url(#hero-signal)" stroke-width="2" stroke-dasharray="85 850" transform="rotate(-14 220 220)"/><path d="M216 214h8m-4-4v8" stroke="#737373"/></svg><div class="lattice-caption"><span>IDEA</span><span>→</span><span>PROYECTO</span></div></div>
+    </section>
+
+    <section class="demo-section reveal" id="demo" aria-labelledby="demo-title">
+      <div class="section-topline"><span class="eyebrow">EL ESPACIO DE TRABAJO</span><span class="micro-label">VISTA DE EJEMPLO / 01</span></div>
+      <div class="demo-intro"><h2 id="demo-title">Una conversación.<br/>Un proyecto en marcha.</h2><p>Del primer mensaje a los archivos que podés abrir, revisar y descargar.</p></div>
+      <div class="product-demo">
+        <div class="demo-window-bar"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>soluna / mi-proyecto</span><span class="demo-example">VISTA DE EJEMPLO</span></div>
+        <div id="demo-chat" class="demo-panel" role="tabpanel" aria-labelledby="demo-tab-chat" tabindex="0">
+          <aside class="demo-sidebar" aria-hidden="true"><span class="demo-project">⌘ mi-proyecto</span><span class="demo-sidebar-active">＋ Nueva tarea</span><small>CONVERSACIONES</small><span>Mi próxima página</span><span>Explorar una idea</span><div class="demo-sidebar-bottom">☾ Soluna Cloud</div></aside>
+          <div class="demo-chat-content"><div class="demo-breadcrumb">mi-proyecto <span>/</span> Nueva tarea</div><div class="demo-message">Creá una página para mi próximo proyecto.</div><div class="demo-answer"><span class="mini-moon" aria-hidden="true">☾</span><div><strong>Hagamos lugar a esa idea.</strong><p>Voy a preparar los archivos para que puedas explorar tu página.</p><div class="demo-tool"><span>✓ write</span><code>index.html</code><small>Listo</small></div></div></div><div class="demo-composer"><span aria-hidden="true">✦</span>Describí lo que querés construir…<span class="demo-send" aria-hidden="true">↑</span></div></div>
+        </div>
+        <div id="demo-files" class="demo-panel" role="tabpanel" aria-labelledby="demo-tab-files" tabindex="0" hidden>
+          <div class="demo-file-list"><span class="eyebrow">ARCHIVOS DE LA TAREA</span><span class="demo-sidebar-active">⌘ index.html</span><span>⌘ style.css</span><span>⌘ script.js</span><small>Tus archivos, en un solo lugar.</small></div>
+          <div class="demo-editor"><div class="demo-code-heading"><span>index.html</span><span>Vista de código</span></div><pre><code><span class="code-dim">01</span> &lt;!doctype html&gt;
+<span class="code-dim">02</span> &lt;html lang="es"&gt;
+<span class="code-dim">03</span>   &lt;head&gt;
+<span class="code-dim">04</span>     &lt;title&gt;Mi próxima idea&lt;/title&gt;
+<span class="code-dim">05</span>   &lt;/head&gt;
+<span class="code-dim">06</span>   &lt;body&gt;
+<span class="code-dim">07</span>     &lt;h1&gt;Todo empieza acá.&lt;/h1&gt;
+<span class="code-dim">08</span>   &lt;/body&gt;
+<span class="code-dim">09</span> &lt;/html&gt;</code></pre></div>
+        </div>
+        <div id="demo-preview" class="demo-panel demo-preview-panel" role="tabpanel" aria-labelledby="demo-tab-preview" tabindex="0" hidden>
+          <div class="demo-preview-toolbar"><span>mi-proyecto / index.html</span><span>VISTA PREVIA</span></div><div class="demo-preview-canvas"><span class="pill">MI PRÓXIMA IDEA</span><h3>Todo empieza<br/>acá.</h3><p>Un primer paso para lo que sigue.</p><span class="demo-preview-button">Explorar el proyecto ↗</span></div>
+        </div>
+        <div class="demo-tabs" role="tablist" aria-label="Explorar la vista de ejemplo">
+          <button id="demo-tab-chat" type="button" role="tab" aria-selected="true" aria-controls="demo-chat" tabindex="0"><span aria-hidden="true">⌁</span>Conversación</button>
+          <button id="demo-tab-files" type="button" role="tab" aria-selected="false" aria-controls="demo-files" tabindex="-1"><span aria-hidden="true">⌘</span>Archivos</button>
+          <button id="demo-tab-preview" type="button" role="tab" aria-selected="false" aria-controls="demo-preview" tabindex="-1"><span aria-hidden="true">◉</span>Vista previa</button>
+        </div>
+      </div>
+      <a class="text-link demo-link" href="/app">Abrir Soluna Cloud <span aria-hidden="true">→</span></a>
+    </section>
+
+    <section id="posibilidades" class="possibilities" aria-labelledby="possibilities-title">
+      <div class="section-intro reveal"><span class="eyebrow">DE LA CONVERSACIÓN A LA CREACIÓN</span><h2 id="possibilities-title">Un espacio.<br/>Muchas formas de crear.</h2><p>Probá una idea, revisá lo que cambia y seguí construyendo.</p></div>
+      <div class="feature-grid">
+        <article class="feature-card feature-wide reveal"><div><span class="feature-icon" aria-hidden="true">⌁</span><small>01 / CONVERSÁ</small><h3>Contalo a tu manera.</h3><p>Describí una página, una herramienta o una mejora. Trabajá con el modelo de IA que elijas y seguí cada paso en el chat.</p><a class="text-link" href="/app">Empezar una conversación →</a></div><div class="feature-terminal" aria-label="Ejemplo de una conversación"><div><span>vos</span><p>¿Y si hacemos algo nuevo?</p></div><div><span>soluna</span><p>Vamos a darle forma.</p><span class="terminal-cursor" aria-hidden="true"></span></div></div></article>
+        <article class="feature-card reveal"><span class="feature-icon" aria-hidden="true">⌘</span><small>02 / EXPLORÁ</small><h3>Tu proyecto, a la vista.</h3><p>Revisá el código, abrí vistas previas y descargá todos los archivos de la tarea en un ZIP.</p><div class="feature-file"><span>⌘ index.html</span><span>↗</span></div><a class="text-link" href="#demo">Explorar los archivos →</a></article>
+        <article class="feature-card reveal"><span class="feature-icon" aria-hidden="true">☾</span><small>03 / CONTINUÁ</small><h3>Volvé a tu espacio.</h3><p>Entrá a tu cuenta, retomá tus conversaciones y administrá tus claves de los proveedores de IA.</p><div class="feature-file"><span>Mi espacio de trabajo</span><span>↗</span></div><a class="text-link" href="/login">Ingresar a mi cuenta →</a></article>
+      </div>
+    </section>
+    <section class="closing-card reveal"><span class="eyebrow">EL SIGUIENTE PASO ES TUYO</span><h2>Tu próxima idea<br/>merece un comienzo.</h2><a class="button primary" id="welcome-bottom" href="/register">Abrir mi espacio <span aria-hidden="true">→</span></a><span class="closing-coordinate" aria-hidden="true">SOLUNA / CLOUD</span></section>
+  </main>
+  <footer class="site-footer"><a href="/" class="account-brand">soluna<span>cloud</span></a><span>Creado por Picolas · Hecho para construir.</span><a class="text-link" href="/login">Entrar a mi cuenta ↗</a></footer>
+  <script type="module" src="/welcome.js"></script>
+</body>
+</html>
