@@ -2,7 +2,7 @@
 
 A minimal, extensible AI coding agent for your terminal and browser. Soluna is based on the open source [Zyn](https://github.com/toZyn/Zyn) project and keeps its agent architecture and capabilities.
 
-Soluna reads your code, edits files, runs commands, and asks you questions when a decision is genuinely yours to make. It works with 13+ model providers out of the box — including several that are completely free and need no API key.
+Soluna reads your code, edits files, runs commands, and asks you questions when a decision is genuinely yours to make. It works with 14 model providers out of the box — including several that are completely free and need no API key.
 
 ```
 ❯ add input validation to the signup endpoint
@@ -54,7 +54,7 @@ This repository ships a complete manual in [`docs/`](docs/). Read it in order wh
 | [docs/README.md](docs/README.md) | Documentation index and reading paths |
 | [docs/getting-started.md](docs/getting-started.md) | Install, first run, a guided tour |
 | [docs/tui.md](docs/tui.md) | The interface, the status bar, themes, keys |
-| [docs/providers.md](docs/providers.md) | All 13 providers, keys, custom endpoints |
+| [docs/providers.md](docs/providers.md) | All 14 providers, keys, custom endpoints |
 | [docs/commands.md](docs/commands.md) | Every slash command, in depth |
 | [docs/tools.md](docs/tools.md) | Every tool, its parameters, and best practices |
 | [docs/sessions.md](docs/sessions.md) | Saving, resuming, pruning, file format |
@@ -84,7 +84,7 @@ It is built to be boring and reliable: a workspace sandbox stops the agent from 
 |---|---|
 | [getting-started.md](getting-started.md) | Install, first run, a guided tour |
 | [tui.md](tui.md) | The interface, the status bar, themes, keys |
-| [providers.md](providers.md) | All 13 providers, keys, custom endpoints |
+| [providers.md](providers.md) | All 14 providers, keys, custom endpoints |
 | [commands.md](commands.md) | Every slash command, in depth |
 | [tools.md](tools.md) | Every tool, its parameters, and best practices |
 | [sessions.md](sessions.md) | Saving, resuming, pruning, file format |

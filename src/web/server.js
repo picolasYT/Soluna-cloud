@@ -47,6 +47,7 @@ import { uiBridge } from "../core/ui-bridge.js";
 import { indexHtml, loginHtml, newRunId, clientBase } from "./events.js";
 import { Jobs } from "./jobs.js";
 import { fetchOpenRouterModels } from "./openrouter-models.js";
+import { getSunModels } from "../providers/sun-models.js";
 import { createZip } from "./zip.js";
 
 const execFileAsync = promisify(execFile);
@@ -727,6 +728,7 @@ export async function startWebServer(options = {}) {
         label: p.label,
         hint: p.hint,
         requiresKey: p.requiresKey,
+        dynamic: p.dynamic === true,
         ready: isProviderReady(p.id, catalog, configNow),
         keySource: keySourceOf(p.id, catalog, configNow),
         keyCount: resolveApiKeys(p.id, p.envKey, configNow).length,
@@ -1023,6 +1025,14 @@ export async function startWebServer(options = {}) {
       const provider = query.get("provider");
       const info = getProviderInfo(provider, catalog);
       if (!info) return sendError(res, 400, "Proveedor desconocido.");
+      if (provider === "sun") {
+        try {
+          const models = await getSunModels(modelFetch, { refresh: query.get("refresh") === "1" });
+          return sendJSON(res, 200, { models, source: "sun" });
+        } catch (error) {
+          return sendError(res, 502, error.message || "No se pudo consultar Sun.");
+        }
+      }
       if (provider !== "openrouter") return sendJSON(res, 200, { models: info.models || [], source: "built-in" });
 
       const cfg = await loadConfig();

@@ -19,7 +19,7 @@ after(async () => {
 
 test("logger writes error entries and redacts secrets", async () => {
   const { logger } = await import("../src/core/logger.js");
-  logger.error("boom", { key: "sk-abcdef1234567890ghijkl" });
+  logger.error("boom", { key: "sk-abcdef1234567890ghijkl", sun: "sun_live_test_example_key_123456" });
   await logger.flush();
 
   const files = await readdir(join(home, "logs"));
@@ -29,6 +29,7 @@ test("logger writes error entries and redacts secrets", async () => {
   const entry = lines.find((l) => l.level === "error" && l.message === "boom");
   assert.ok(entry, "error entry present");
   assert.ok(!content.includes("sk-abcdef1234567890ghijkl"), "secret redacted");
+  assert.ok(!content.includes("sun_live_test_example_key_123456"), "Sun key redacted");
 });
 
 test("debug entries are skipped unless ZYN_DEBUG is set", async () => {

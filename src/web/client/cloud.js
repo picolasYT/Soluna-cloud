@@ -6,6 +6,7 @@ const settingsProvider = $("#settings-provider");
 let catalog = [];
 let configLoaded = false;
 const providerModels = new Map();
+const liveModelProviders = new Set(["openrouter", "sun"]);
 let modelsRequestId = 0;
 let agentBusy = false;
 let keysRequestId = 0;
@@ -34,7 +35,7 @@ function fillModels(select, provider, current) {
   const models = availableModels(provider);
   select.replaceChildren(option(provider ? "Elegir modelo" : "Elegí proveedor", ""));
   for (const model of models) {
-    select.appendChild(option(model.label || model.id, model.id));
+    select.appendChild(option(modelLabel(model, provider), model.id, model.available === false));
   }
   if (current) {
     if (!models.some((item) => item.id === current)) select.appendChild(option(current, current));
@@ -42,16 +43,22 @@ function fillModels(select, provider, current) {
   }
 }
 
+function modelLabel(model, provider) {
+  const state = model.available === false ? " · no disponible"
+    : provider === "sun" && model.tools === false ? " · solo chat" : "";
+  return `${model.label || model.id}${state}`;
+}
+
 function availableModels(provider) {
   return providerModels.get(provider) || catalog.find((item) => item.id === provider)?.models || [];
 }
 
 function renderModelSearch(provider) {
-  for (const id of ["#models-free", "#models-tools"]) {
-    $(id).disabled = provider !== "openrouter";
-    if (provider !== "openrouter") $(id).checked = false;
-  }
-  $("#models-refresh").disabled = provider !== "openrouter";
+  $("#models-free").disabled = provider !== "openrouter";
+  if (provider !== "openrouter") $("#models-free").checked = false;
+  $("#models-tools").disabled = !liveModelProviders.has(provider);
+  if (!liveModelProviders.has(provider)) $("#models-tools").checked = false;
+  $("#models-refresh").disabled = !liveModelProviders.has(provider);
   const models = availableModels(provider);
   const term = $("#model-search").value.trim().toLocaleLowerCase();
   const matches = term
@@ -60,14 +67,22 @@ function renderModelSearch(provider) {
   const filtered = matches.filter((item) => (!$("#models-free").checked || item.free)
     && (!$("#models-tools").checked || item.tools));
   const list = $("#settings-model");
-  list.replaceChildren(...filtered.map((item) => option(`${item.free ? "Gratis · " : ""}${item.label} · ${item.id}`, item.id)));
+  list.replaceChildren(...filtered.map((item) => option(`${item.free ? "Gratis · " : ""}${modelLabel(item, provider)} · ${item.id}`, item.id, item.available === false)));
   if (filtered.some((item) => item.id === modelSelect.value)) list.value = modelSelect.value;
   $("#model-count").textContent = `${filtered.length} de ${models.length} modelos`;
+  const capabilityNote = $("#model-capability-note");
+  const chosen = models.find((item) => item.id === modelSelect.value);
+  if (capabilityNote) {
+    capabilityNote.hidden = provider !== "sun";
+    capabilityNote.textContent = chosen?.tools === false
+      ? "Este modelo de Sun solo conversa. Para crear o editar archivos, elegí uno con herramientas."
+      : "El filtro Con herramientas muestra los modelos que Sun confirma para crear y editar archivos. El catálogo no informa precios; no se marcan como gratuitos.";
+  }
 }
 
 async function loadProviderModels(provider, current, refresh = false) {
   const requestId = ++modelsRequestId;
-  if (provider !== "openrouter") {
+  if (!liveModelProviders.has(provider)) {
     renderModelSearch(provider);
     return;
   }
@@ -82,7 +97,8 @@ async function loadProviderModels(provider, current, refresh = false) {
     if (requestId !== modelsRequestId || providerSelect.value !== provider) return;
     renderModelSearch(provider);
     $("#model-count").textContent += " · lista parcial";
-    showNotice(`No se pudo cargar el catálogo completo de OpenRouter: ${error.message}`);
+    const label = catalog.find((item) => item.id === provider)?.label || provider;
+    showNotice(`No se pudo cargar el catálogo completo de ${label}: ${error.message}`);
   }
 }
 
@@ -106,7 +122,7 @@ async function loadConfig() {
     loadProviderKeys(settingsProvider.value);
     fillModels(modelSelect, data.current?.provider, data.current?.model);
     renderModelSearch(data.current?.provider);
-    if (data.current?.provider === "openrouter") loadProviderModels("openrouter", data.current?.model);
+    if (liveModelProviders.has(data.current?.provider)) loadProviderModels(data.current.provider, data.current?.model);
     configLoaded = true;
   } catch (error) {
     showNotice(`No se pudo cargar la lista de modelos: ${error.message}`);
@@ -211,6 +227,10 @@ async function selectModel(model) {
     $("#model-hint").textContent = model;
     modelSelect.value = model;
     $("#settings-model").value = model;
+    renderModelSearch(settingsProvider.value);
+    if (providerSelect.value === "sun" && availableModels("sun").find((item) => item.id === model)?.tools === false) {
+      showNotice("Este modelo de Sun solo conversa. Elegí uno con herramientas para crear o editar archivos.");
+    }
   } catch (error) { showNotice(error.message); await loadConfig(); }
 }
 
@@ -233,6 +253,7 @@ function openSettings() {
 async function loadProviderKeys(provider) {
   const requestId = ++keysRequestId;
   const list = $("#provider-keys");
+  $("#settings-key").placeholder = provider === "sun" ? "sun_live_…" : "Pegá una nueva clave API";
   list.replaceChildren();
   $("#provider-keys-count").textContent = provider ? "Cargando claves…" : "Elegí un proveedor";
   if (!provider) return;

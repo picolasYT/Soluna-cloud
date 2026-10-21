@@ -5,6 +5,8 @@ import { OpenAICompatibleProvider } from "./openai-compatible.js";
 import { PROVIDER_CATALOG, getProviderInfo } from "./catalog.js";
 import { resolveApiKeys } from "../core/session-store.js";
 import { withKeyFailover } from "./key-failover.js";
+import { SunProvider } from "./sun.js";
+export { SunProvider } from "./sun.js";
 
 export { OpenAIProvider } from "./openai.js";
 export { AnthropicProvider } from "./anthropic.js";
@@ -47,7 +49,8 @@ export function createProvider(name, options = {}) {
   const Dedicated = DEDICATED[id];
   if (Dedicated) return withKeyFailover(new Dedicated(opts), { id, keys, onKeyRotation: options.onKeyRotation });
 
-  return new OpenAICompatibleProvider({
+  const Compatible = id === "sun" ? SunProvider : OpenAICompatibleProvider;
+  return new Compatible({
     id: info.id,
     label: info.label,
     baseUrl: opts.baseUrl || info.baseUrl,
@@ -72,6 +75,7 @@ export function detectProvider() {
   if (process.env.ANTHROPIC_API_KEY) return "anthropic";
   if (process.env.OPENAI_API_KEY) return "openai";
   if (process.env.OPENROUTER_API_KEY) return "openrouter";
+  if (process.env.SUN_API_KEY) return "sun";
   if (process.env.GROQ_API_KEY) return "groq";
   if (process.env.DEEPSEEK_API_KEY) return "deepseek";
   if (process.env.GEMINI_API_KEY) return "google";

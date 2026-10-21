@@ -3,12 +3,12 @@ import { createHash } from "node:crypto";
 // Update these notes with each user-visible release. Render's commit SHA makes
 // every deployed update a new announcement, even when these notes are unchanged.
 const notes = {
-  title: "Un chat más cómodo, novedades al día",
-  summary: "Actualizamos Soluna Cloud para que trabajar con tu agente sea más claro.",
+  title: "Sun llega a Soluna Cloud",
+  summary: "Ya podés conectar tu cuenta de Models of the Sun desde Configuración.",
   changes: [
-    "Las respuestas largas se desplazan dentro del chat, sin tapar el cuadro de escritura.",
-    "Mejoramos las listas, los bloques de código y el formato de las respuestas.",
-    "Cada actualización tiene un comunicado que aparece una sola vez por cuenta.",
+    "Agregá una o varias claves de Sun y elegí entre los modelos de su catálogo en vivo.",
+    "Buscá modelos, actualizá la lista y filtrá los que admiten herramientas para trabajar con archivos.",
+    "Los modelos que solo conversan se identifican como solo chat.",
   ],
 };
 

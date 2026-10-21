@@ -141,6 +141,22 @@ export const PROVIDER_CATALOG = [
     ],
   },
   {
+    id: "sun",
+    label: "Sun · Models of the Sun",
+    hint: "catálogo en vivo, requiere clave Sun",
+    envKey: "SUN_API_KEY",
+    baseUrl: "https://sun.soymaycol.icu/v1",
+    requiresKey: true,
+    compatible: "openai",
+    dynamic: true,
+    docs: "https://sun.soymaycol.icu/",
+    models: [
+      { id: "sun-qwen3-coder-plus-22fd2013", label: "Qwen3 Coder Plus", tools: true },
+      { id: "sun-devstral-2-c48f8af2", label: "Devstral 2", tools: true },
+      { id: "sun-north-mini-code-fb2667af", label: "North Mini Code", tools: true },
+    ],
+  },
+  {
     id: "together",
     label: "Together AI",
     hint: "open models",

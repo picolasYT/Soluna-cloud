@@ -1,6 +1,6 @@
 # Providers
 
-Soluna works with **13 providers out of the box** plus any OpenAI-compatible
+Soluna works with **14 providers out of the box** plus any OpenAI-compatible
 endpoint you add yourself. Providers that require a key can be configured two
 ways: with an environment variable, or entirely from the UI with `/setkey`.
 
@@ -29,13 +29,38 @@ Free Zen models include `deepseek-v4-flash-free`, `big-pickle`,
 | DeepSeek | `deepseek` | `DEEPSEEK_API_KEY` |
 | Mistral | `mistral` | `MISTRAL_API_KEY` |
 | OpenRouter | `openrouter` | `OPENROUTER_API_KEY` |
+| Models of the Sun | `sun` | `SUN_API_KEY` |
 | Together AI | `together` | `TOGETHER_API_KEY` |
 | xAI Grok | `xai` | `XAI_API_KEY` |
 | Cerebras | `cerebras` | `CEREBRAS_API_KEY` |
 
 All of them speak the OpenAI chat-completions format, so one generic adapter
-serves them all. OpenRouter lists its models at runtime (`dynamic`); the
-others ship a curated starting list you can extend.
+serves them all. OpenRouter and Sun list their models at runtime (`dynamic`); other hosted
+providers ship a curated starting list you can extend.
+
+## Models of the Sun (Sun)
+
+In the web chat, open **Configuración**, select **Sun · Models of the Sun** and
+add the key issued by https://sun.soymaycol.icu/. Keys with the `sun_live_`
+prefix are accepted; the prefix alone is not a usable key. Multiple keys use
+the same storage, account encryption and automatic failover as other providers.
+
+The completion base URL is `https://sun.soymaycol.icu/v1`, with Bearer
+authentication. Soluna loads the complete catalog from Sun's public
+`https://sun.soymaycol.icu/api/models` endpoint without sending any key. The
+catalog is cached for ten minutes; **Actualizar** refreshes it. All model IDs
+are preserved, including models marked unavailable (disabled in the picker).
+
+Use **Con herramientas** for file creation and editing. Models explicitly
+reported without tool support are marked **solo chat** and receive text chat
+requests without tool declarations. Unknown capability information is kept
+unknown. Sun tool calls use JSON completions, as in Sun's playground; ordinary
+text replies can stream. Pricing is not reported by this catalog, so models
+are not assumed to be free.
+
+For the CLI, export `SUN_API_KEY` or use `/setkey sun`, then select `/providers`
+and `/models`. The initial coding choices are a fallback when discovery fails;
+the live catalog can change independently of Soluna.
 
 ## Two ways to provide a key
 

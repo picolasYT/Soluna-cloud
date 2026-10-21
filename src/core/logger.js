@@ -30,7 +30,7 @@ export function setDebug(enabled) {
 
 /** Replace anything that looks like a secret (long key/token strings). */
 function redact(text) {
-  return String(text).replace(/(sk-[A-Za-z0-9_\-]{8,}|AIza[A-Za-z0-9_\-]{8,}|Bearer\s+[A-Za-z0-9._\-]{12,}|[A-Za-z0-9]{32,})/g, "[redacted]");
+  return String(text).replace(/(sun_(?:live|test)_[A-Za-z0-9_\-]{8,}|sk-[A-Za-z0-9_\-]{8,}|AIza[A-Za-z0-9_\-]{8,}|Bearer\s+[A-Za-z0-9._\-]{12,}|[A-Za-z0-9]{32,})/g, "[redacted]");
 }
 
 function write(level, message, fields) {

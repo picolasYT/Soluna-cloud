@@ -95,7 +95,7 @@ export class OpenAICompatibleProvider {
       const headers = this.#headers();
       // OpenRouter's model catalog is public. A stale/limited bearer key must
       // not prevent the full catalog from loading in the model picker.
-      if (method === "GET" && path === "/models") delete headers.Authorization;
+      if (this.id === "openrouter" && method === "GET" && path === "/models") delete headers.Authorization;
       const response = await fetch(`${this.baseUrl}${path}`, {
         method, headers, ...(body ? { body } : {}), signal,
       });
