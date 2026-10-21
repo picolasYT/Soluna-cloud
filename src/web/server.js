@@ -258,6 +258,7 @@ export async function startWebServer(options = {}) {
   function currentState() {
     return {
       provider: providerId,
+      sessionId: session.id,
       autoApprove,
       model,
       cwd: workspace.root,
@@ -1206,6 +1207,8 @@ export async function startWebServer(options = {}) {
 
     if (req.method === "GET" && path === "/api/sessions") {
       if (!authOk(req)) return sendError(res, 401, "Unauthorized");
+      // Include the completed active chat before its debounce timer fires.
+      if (!jobs.running && !jobs.queuedCount && session.messages.length) await session.flush();
       return sendJSON(res, 200, await accessibleSessions());
     }
 
@@ -1235,6 +1238,8 @@ export async function startWebServer(options = {}) {
       if (!sessionAccessible(data)) return sendError(res, 404, "Session not found");
       if (body.id === session.id) return sendError(res, 409, "No se puede eliminar la sesión activa.");
       const ok = await deleteSession(body.id);
+      if (!ok) return sendError(res, 500, "No se pudo eliminar el chat. Volvé a intentar.");
+      append("sessions-changed", {});
       return sendJSON(res, 200, { ok });
     }
 

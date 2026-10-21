@@ -9,6 +9,9 @@ const providerModels = new Map();
 const liveModelProviders = new Set(["openrouter", "sun"]);
 let modelsRequestId = 0;
 let agentBusy = false;
+let deletingSession = false;
+let currentSessionId = null;
+let sessionsRequestId = 0;
 let keysRequestId = 0;
 
 async function request(path, options) {
@@ -130,8 +133,10 @@ async function loadConfig() {
 }
 
 async function loadSessions() {
+  const requestId = ++sessionsRequestId;
   try {
     const sessions = await request("/api/sessions");
+    if (requestId !== sessionsRequestId) return;
     const list = $("#sessions-list");
     $("#session-count").textContent = String(sessions.length);
     if (!sessions.length) {
@@ -141,9 +146,21 @@ async function loadSessions() {
     list.replaceChildren();
     for (const session of sessions) {
       const button = document.createElement("button");
+      const row = document.createElement("div");
+      row.className = "session-row";
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "session-delete";
+      remove.title = "Eliminar chat";
+      remove.setAttribute("aria-label", `Eliminar chat: ${session.title || "Nueva conversación"}`);
+      remove.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg>';
+      remove.addEventListener("click", () => deleteChat(session));
       button.className = "session-item";
+      button.dataset.id = session.id;
+      button.classList.toggle("active", session.id === currentSessionId);
       button.type = "button";
-      button.disabled = agentBusy;
+      button.disabled = agentBusy || deletingSession;
+      remove.disabled = agentBusy || deletingSession;
       button.title = session.title || "Conversación";
       const title = document.createElement("span");
       title.className = "session-title";
@@ -156,7 +173,7 @@ async function loadSessions() {
       icon.textContent = "◌";
       button.append(icon, title, stamp);
       button.addEventListener("click", async () => {
-        if (agentBusy) return;
+        if (agentBusy || deletingSession) return;
         try {
           await request("/api/sessions/load", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: session.id }) });
           document.querySelectorAll(".session-item").forEach((item) => item.classList.remove("active"));
@@ -166,9 +183,47 @@ async function loadSessions() {
           await loadConfig();
         } catch (error) { showNotice(error.message); }
       });
-      list.appendChild(button);
+      row.append(button, remove);
+      list.appendChild(row);
     }
-  } catch (error) { showNotice(`No se pudieron cargar las conversaciones: ${error.message}`); }
+  } catch (error) {
+    if (requestId === sessionsRequestId) showNotice(`No se pudieron cargar las conversaciones: ${error.message}`);
+  }
+}
+
+function updateSessionControls() {
+  const disabled = agentBusy || deletingSession;
+  $("#btn-new").disabled = disabled;
+  document.querySelectorAll(".session-item,.session-delete").forEach((button) => { button.disabled = disabled; });
+}
+
+async function deleteChat(session) {
+  if (agentBusy || deletingSession) return;
+  const title = session.title || "Nueva conversación";
+  if (!window.confirm(`¿Eliminar el chat "${title}"?\n\nSe borrará la conversación del historial. Los archivos del proyecto se conservan. Esta acción no se puede deshacer.`)) return;
+  deletingSession = true;
+  updateSessionControls();
+  try {
+    // Read the server's active id rather than relying on a possibly stale tab.
+    const current = await request("/api/state");
+    if (current.busy || current.queued) throw new Error("Esperá a que termine la tarea antes de eliminar chats.");
+    if (current.sessionId === session.id) {
+      // The new-session endpoint drains pending saves before switching chats.
+      const next = await request("/api/sessions/new", { method: "POST" });
+      currentSessionId = next.id;
+      $("#topbar-title").textContent = "Nueva tarea";
+    }
+    const result = await request("/api/sessions/delete", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: session.id }),
+    });
+    if (!result.ok) throw new Error("No se pudo eliminar el chat. Volvé a intentar.");
+    document.querySelectorAll(".session-item").forEach((button) => {
+      if (button.dataset.id === session.id) button.closest(".session-row")?.remove();
+    });
+    await loadSessions();
+  } catch (error) { showNotice(error.message); }
+  finally { deletingSession = false; updateSessionControls(); }
 }
 
 async function loadWorkspaces() {
@@ -353,7 +408,7 @@ $("#settings-save-key").addEventListener("click", async () => {
   finally { button.disabled = false; }
 });
 $("#btn-new").addEventListener("click", async () => {
-  if (agentBusy) return;
+  if (agentBusy || deletingSession) return;
   try {
     await request("/api/sessions/new", { method: "POST" });
     $("#topbar-title").textContent = "Nueva tarea";
@@ -386,8 +441,11 @@ window.addEventListener("soluna-state", (event) => {
   const state = event.detail;
   const wasBusy = agentBusy;
   agentBusy = Boolean(state.busy || state.queued);
-  $("#btn-new").disabled = agentBusy;
-  document.querySelectorAll(".session-item").forEach((button) => { button.disabled = agentBusy; });
+  if (state.sessionId) currentSessionId = state.sessionId;
+  updateSessionControls();
+  document.querySelectorAll(".session-item").forEach((button) => {
+    button.classList.toggle("active", button.dataset.id === currentSessionId);
+  });
   if (typeof state.autoApprove === "boolean") $("#settings-auto-approve").checked = state.autoApprove;
   if (wasBusy && !agentBusy) loadSessions();
   if (state.provider && (providerSelect.value !== state.provider || modelSelect.value !== state.model)) {
@@ -434,6 +492,7 @@ $("#workspace-form").addEventListener("submit", async (event) => {
   }
 });
 
+window.addEventListener("soluna-sessions-changed", loadSessions);
 loadConfig();
 loadSessions();
 loadWorkspaces();

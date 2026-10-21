@@ -81,6 +81,7 @@ function connect() {
 
 function handleEvent(ev) {
   switch (ev.kind) {
+    case "sessions-changed": window.dispatchEvent(new CustomEvent("soluna-sessions-changed")); break;
     case "user": addUserMessage(ev.text); break;
     case "stream": setActivity("Escribiendo respuesta…"); appendStream(ev.content); break;
     case "stream-end": finalizeStream(ev.text); setActivity("Soluna está trabajando…"); break;

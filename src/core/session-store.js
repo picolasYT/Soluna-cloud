@@ -372,6 +372,7 @@ export class Session {
     this.usage = { input: 0, output: 0, turns: 0, toolCalls: 0 };
     this.compactions = 0;
     this._timer = null;
+    this._pendingSave = Promise.resolve(true);
   }
 
   static fromJSON(data) {
@@ -411,7 +412,7 @@ export class Session {
     if (this._timer) clearTimeout(this._timer);
     this._timer = setTimeout(() => {
       this._timer = null;
-      saveSession(this.toJSON());
+      this.flush();
     }, delay);
     this._timer.unref?.();
   }
@@ -421,6 +422,8 @@ export class Session {
       clearTimeout(this._timer);
       this._timer = null;
     }
-    return saveSession(this.toJSON());
+    const snapshot = this.toJSON();
+    this._pendingSave = this._pendingSave.then(() => saveSession(snapshot));
+    return this._pendingSave;
   }
 }

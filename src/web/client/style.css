@@ -337,3 +337,14 @@ body[data-theme="light"] .diff-ctx {color:var(--muted);}
 .release-announcement ul{padding-left:18px}
 .release-dismiss{position:absolute;right:16px;top:16px;background:var(--text);color:var(--bg)}
 @media(max-width:760px){.release-announcement{padding:14px;margin-top:10px}.release-dismiss{position:static;margin-top:8px}.msg-assistant .msg-body{max-width:calc(100% - 38px)}.msg-bubble h1{font-size:23px}.msg-bubble h2{font-size:20px}}
+
+
+/* Independent open/delete controls work with touch, mouse and keyboard. */
+.session-row{display:flex;align-items:center;gap:4px;min-width:0}
+.session-row .session-item{flex:1;min-width:0;width:auto}
+.session-delete{display:grid;place-items:center;flex:0 0 36px;width:36px;height:36px;padding:8px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--dim);cursor:pointer}
+.session-delete svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.session-delete:hover{background:var(--panel);border-color:var(--border-hi);color:var(--danger)}
+.session-delete:focus-visible,.session-row .session-item:focus-visible{outline:2px solid var(--text);outline-offset:1px}
+.session-delete:disabled{opacity:.4;cursor:wait}
+@media(max-width:760px){.session-delete{flex-basis:44px;width:44px;height:44px}.session-row .session-item{min-height:44px}}
