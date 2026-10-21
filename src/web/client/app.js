@@ -522,7 +522,7 @@ function appendStreamEl() {
   streamEl = el("div", "msg msg-assistant msg-streaming");
   streamEl.innerHTML = `
     <div class="msg-avatar">⚡</div>
-    <div class="msg-body"><div class="msg-bubble"><span class="stream-text"></span><span class="cursor"></span></div></div>`;
+    <div class="msg-body"><div class="msg-bubble"><div class="stream-text"></div><span class="cursor"></span></div></div>`;
   live.appendChild(streamEl);
   live.classList.add("show");
   scrollBottom();
@@ -669,7 +669,7 @@ function appendTranscript(node) {
 }
 
 function scrollBottom() {
-  const t = $("#transcript");
+  const t = $("#chat-scroll");
   t.scrollTop = t.scrollHeight;
 }
 

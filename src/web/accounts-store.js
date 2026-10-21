@@ -57,6 +57,11 @@ export async function createAccountsStore({ databaseUrl, encryptionKey, pool: su
       expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS soluna_logins_expiry ON soluna_logins(expires_at);
+    CREATE TABLE IF NOT EXISTS soluna_release_views (
+      user_id UUID NOT NULL REFERENCES soluna_users(id) ON DELETE CASCADE,
+      release_id CHAR(64) NOT NULL, viewed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY(user_id, release_id)
+    );
     CREATE TABLE IF NOT EXISTS soluna_provider_keys (
       user_id UUID NOT NULL REFERENCES soluna_users(id) ON DELETE CASCADE,
       provider VARCHAR(100) NOT NULL, encrypted_keys TEXT NOT NULL,
@@ -69,6 +74,15 @@ export async function createAccountsStore({ databaseUrl, encryptionKey, pool: su
     );
   `);
   const store = {
+    async claimRelease(userId, releaseId) {
+      try {
+        await pool.query("INSERT INTO soluna_release_views(user_id,release_id) VALUES($1,$2)", [userId, releaseId]);
+        return true;
+      } catch (error) {
+        if (error.code === "23505") return false;
+        throw error;
+      }
+    },
     async ensureAdmin(password) {
       const existing = await pool.query("SELECT * FROM soluna_users WHERE username=$1", ["picolas"]);
       if (existing.rows[0]) {

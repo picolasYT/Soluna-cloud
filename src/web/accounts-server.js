@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { createAccountsStore } from "./accounts-store.js";
 import { accountRuntimes, importLegacyOwner } from "./account-runtimes.js";
 import { SOLUNA_HOME } from "../core/session-store.js";
+import { currentRelease } from "./release.js";
 
 const fail = (status, message) => Object.assign(new Error(message), { status });
 const json = (res, status, body) => { res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }); res.end(JSON.stringify(body)); };
@@ -31,7 +32,7 @@ export async function startAccountsServer({ host = "localhost", port = 3456, hom
   adminPassword = process.env.SOLUNA_ADMIN_PASSWORD || process.env.SOLUNA_WEB_TOKEN,
   store: suppliedStore, runtimes: suppliedRuntimes, migrate = true,
   allowRegistration = process.env.SOLUNA_ALLOW_REGISTRATION !== "false",
-  publicUrl = process.env.RENDER_EXTERNAL_URL } = {}) {
+  publicUrl = process.env.RENDER_EXTERNAL_URL, release = currentRelease() } = {}) {
   const store = suppliedStore || await createAccountsStore({ databaseUrl, encryptionKey });
   let runtimes;
   try {
@@ -125,6 +126,12 @@ export async function startAccountsServer({ host = "localhost", port = 3456, hom
         streams.delete(token);
         setCookie(req, res, "", 0);
         return json(res, 200, { ok: true });
+      }
+      if (req.method === "POST" && path === "/api/account/announcement") {
+        await bodyJSON(req);
+        // One atomic claim across tabs, devices, logins and server restarts.
+        const firstView = await store.claimRelease(user.id, release.id);
+        return json(res, 200, { announcement: firstView ? release : null });
       }
       if (path === "/admin" || path.startsWith("/api/admin/")) {
         if (!user.isAdmin || user.username !== "picolas") throw fail(403, "Este panel está disponible solo para picolas.");

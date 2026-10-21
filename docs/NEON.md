@@ -42,7 +42,7 @@ Al activar cuentas, Soluna copia las conversaciones y carpetas administradas de 
 
 - Las contraseñas se guardan con scrypt y una sal aleatoria. Las sesiones usan cookies HttpOnly y tokens aleatorios cuyo hash queda en la base.
 - Las claves API se cifran con AES-256-GCM en PostgreSQL. Cada proceso del agente mantiene una configuración privada en su carpeta de cuenta para usarlas; protegé también el disco y sus copias.
-- El panel devuelve claves ocultas por defecto. Solo `picolas` puede revelarlas; cada revelación, cambio y bloqueo de cuenta queda registrado. La pantalla de registro informa este acceso administrativo.
+- El panel devuelve claves ocultas por defecto. Solo `picolas` puede revelarlas; cada revelación, cambio y bloqueo de cuenta queda registrado. La configuración de claves informa este acceso administrativo.
 - Los usuarios normales pueden crear y editar archivos y usar las vistas previas. Los comandos de shell y MCP quedan reservados al administrador. Los procesos separados aíslan el estado de la aplicación; no sustituyen contenedores del sistema operativo para ejecutar código arbitrario de usuarios.
 - El máximo predeterminado es de cuatro agentes residentes. Al necesitar espacio se recicla un proceso inactivo, conservando sus archivos, claves y conversaciones. Si todos trabajan, se devuelve un mensaje de servidor ocupado.
 - `SOLUNA_ALLOW_REGISTRATION=false` desactiva nuevos registros. `SOLUNA_MAX_WORKERS` permite ajustar el máximo de procesos entre 1 y 16 según la memoria del servicio.
@@ -58,3 +58,11 @@ El plan gratuito de Neon tiene cuotas de almacenamiento y procesamiento; revisal
 - **No se pueden leer claves después de cambiar variables:** recuperá el valor original de `SOLUNA_ENCRYPTION_KEY`.
 
 Referencias: https://neon.com/docs/get-started/connect-neon y https://render.com/docs/configure-environment-variables.
+
+## Comunicados de actualización
+
+Al entrar al chat, cada cuenta recibe una sola vez el comunicado de la versión desplegada, incluido el administrador. La tabla `soluna_release_views` se crea automáticamente y registra la cuenta y la versión: recargar, volver a iniciar sesión o usar otro dispositivo no repite el aviso. Dos pestañas que entran al mismo tiempo comparten ese registro.
+
+Render identifica la actualización mediante `RENDER_GIT_COMMIT`; desplegar un commit nuevo habilita un nuevo comunicado para todos. Reiniciar o volver a desplegar el mismo commit conserva los vistos. Fuera de Render, se puede usar `SOLUNA_RELEASE_ID` como identificador estable; si no se configura ninguno, cambia al editar las notas.
+
+En cada actualización, editá el título, resumen y lista de cambios en `src/web/release.js`. El aviso muestra las novedades de la versión actual; no acumula comunicados anteriores. Se puede cerrar con **Entendido** y no bloquea el chat.
